@@ -11,15 +11,21 @@ html, body { overflow-x: hidden; max-width: 100vw; }
   }
 }
 
-/* Header: compact on mobile */
+/* Header: compact on mobile, logo left of Connect Wallet */
 @media (max-width: 768px) {
   .olympus-header {
     padding: 12px 14px !important;
     min-height: 64px !important;
     margin: 8px 8px 0 !important;
+    justify-content: space-between !important;
+  }
+  .olympus-header .header-spacer {
+    display: none !important;
   }
   .olympus-header .logo-wrap {
-    transform: scale(0.85) !important;
+    position: static !important;
+    transform: scale(0.85) translate(0) !important;
+    order: -1;
   }
   .olympus-header .wallet-btn {
     padding: 10px 18px !important;

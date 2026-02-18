@@ -669,6 +669,57 @@ app.get("/api/depth", (req, res) => {
 // ─── Polymarket prediction markets proxy (avoids CORS) ───
 const POLYMARKET_GAMMA = "https://gamma-api.polymarket.com";
 const POLYMARKET_CLOB = "https://clob.polymarket.com";
+const JUPITER_API = "https://prediction-market-api.jup.ag/api/v1";
+
+// Normalization for Jupiter (Solana)
+function normalizeJupiterMarket(m) {
+  const yesPrice = (m.pricing?.buyYesPriceUsd || 0) / 1e6;
+  const noPrice = (m.pricing?.buyNoPriceUsd || 0) / 1e6;
+  return {
+    id: m.marketId, // Solana market ID (or proxy ID)
+    question: m.metadata?.title || "Unknown",
+    conditionId: null,
+    slug: null,
+    outcomes: ["Yes", "No"],
+    outcomePrices: [yesPrice, noPrice],
+    yesPrice,
+    noPrice,
+    volume: (m.pricing?.volume || 0) / 1e6,
+    liquidity: 0, // Not provided directly in summary
+    description: null,
+    active: m.status === "open",
+    closed: m.status === "closed",
+    endDate: m.metadata?.closeTime || null,
+  };
+}
+
+function normalizeJupiterEvent(e) {
+  const markets = (e.markets || []).map(normalizeJupiterMarket);
+  // Jupiter events often have multiple markets (candidates). 
+  // We can treat them as a "group" event.
+  // We'll pick the first market's prices for the card preview if handling single-market events,
+  // but for things like "Presidential Winner", markets are candidates.
+
+  return {
+    id: e.eventId,
+    slug: e.metadata?.slug || e.eventId,
+    title: e.metadata?.title || "Untitled",
+    image: e.metadata?.imageUrl || null,
+    category: e.category || "unknown",
+    endDate: e.metadata?.closeTime || null,
+    volume: (parseFloat(e.volumeUsd) || 0) / 1e6,
+    volume24h: 0, // Not explicitly in event summary, maybe calculate from markets?
+    liquidity: 0,
+    commentCount: 0,
+    // Bubble up first market data for preview
+    yesPrice: markets[0]?.yesPrice ?? null,
+    noPrice: markets[0]?.noPrice ?? null,
+    numMarkets: markets.length,
+    markets,
+    url: e.metadata?.slug ? `https://polymarket.com/event/${e.metadata.slug}` : null, // Jupiter often mirrors Poly slugs? Or we just link to internal generic page.
+    network: "solana"
+  };
+}
 
 // Helper: Polymarket returns some fields as JSON strings; safely parse them
 function safeParse(val) {
@@ -734,6 +785,54 @@ function normalizeEvent(e) {
 app.get("/api/prediction/markets", async (req, res) => {
   const singleTag = req.query.tag || "";
   try {
+    const network = req.query.network || "solana"; // Default to Solana as requested
+
+    // ─── SOLANA (JUPITER) ───
+    if (network === "solana") {
+      if (singleTag) {
+        // Tag search
+        try {
+          const url = `${JUPITER_API}/events?category=${encodeURIComponent(singleTag)}&limit=40`;
+          const r = await fetch(url);
+          if (!r.ok) return res.json([]);
+          const data = await r.json();
+          const list = (data.data || []).map(e => { const n = normalizeJupiterEvent(e); n.section = "category"; return n; });
+          return res.json(list);
+        } catch (e) { return res.json([]); }
+      }
+
+      // Fan out for Solana
+      const fetchJup = async (params, section) => {
+        try {
+          const r = await fetch(`${JUPITER_API}/events?${params}`);
+          if (!r.ok) return [];
+          const d = await r.json();
+          return (d.data || []).map(e => { const n = normalizeJupiterEvent(e); n.section = section; return n; });
+        } catch { return []; }
+      };
+
+      const fetches = [
+        fetchJup("filter=trending&limit=50", "trending"),
+        fetchJup("filter=new&limit=40", "new"),
+        // Jupiter categories
+        ...["crypto", "politics", "sports", "tech", "finance"].map(tag =>
+          fetchJup(`category=${tag}&limit=20`, "category")
+        )
+      ];
+
+      const results = await Promise.all(fetches);
+      const flat = results.flat();
+      const seen = new Set();
+      const deduped = [];
+      for (const ev of flat) {
+        if (!ev.id || seen.has(ev.id)) continue;
+        seen.add(ev.id);
+        deduped.push(ev);
+      }
+      return res.json(deduped);
+    }
+
+    // ─── POLYMARKET (EXISTING) ───
     // If a specific tag is requested, do a single fetch for that tag
     if (singleTag) {
       const url = `${POLYMARKET_GAMMA}/events?closed=false&active=true&limit=100&order=volume24hr&ascending=false&tag_slug=${encodeURIComponent(singleTag)}`;
@@ -806,6 +905,19 @@ app.get("/api/prediction/markets", async (req, res) => {
 // GET /api/prediction/event/:slug — full event detail
 app.get("/api/prediction/event/:slug", async (req, res) => {
   try {
+    const network = req.query.network || "solana";
+
+    if (network === "solana") {
+      const url = `${JUPITER_API}/events/${encodeURIComponent(req.params.slug)}`;
+      const r = await fetch(url);
+      if (!r.ok) return res.status(404).json({ error: "Event not found" });
+      const d = await r.json();
+      const raw = d.data || d;
+      const event = Array.isArray(raw) ? raw[0] : raw;
+      if (!event) return res.status(404).json({ error: "Event not found" });
+      return res.json(normalizeJupiterEvent(event));
+    }
+
     const r = await fetch(`${POLYMARKET_GAMMA}/events?slug=${encodeURIComponent(req.params.slug)}`);
     if (!r.ok) return res.status(r.status).json({ error: "Event not found" });
     const data = await r.json();

@@ -827,6 +827,7 @@ export default function OmegaDEX() {
   const [predictionBetSize, setPredictionBetSize] = useState("10");
   const [predictionSearch, setPredictionSearch] = useState("");
   const [predictionCategory, setPredictionCategory] = useState("all");
+  const [predictionNetwork, setPredictionNetwork] = useState("solana"); // "solana" | "polygon"
   const [selectedEvent, setSelectedEvent] = useState(null); // event detail view
   const [selectedEventLoading, setSelectedEventLoading] = useState(false);
   const PREDICTION_FEE_WALLET = "0xe4eB34392F232C75d0Ac3b518Ce5e265BCB35E8c";
@@ -838,11 +839,11 @@ export default function OmegaDEX() {
   useEffect(() => {
     if (page !== "prediction") return;
     setPredictionLoading(true);
-    fetchPredictionMarkets()
+    fetchPredictionMarkets("", predictionNetwork)
       .then(setPredictionMarkets)
       .catch(() => setPredictionMarkets([]))
       .finally(() => setPredictionLoading(false));
-  }, [page]);
+  }, [page, predictionNetwork]);
   useEffect(() => {
     if (showWalletModal && wallet.address) {
       setProfileLoading(true);
@@ -1224,8 +1225,8 @@ export default function OmegaDEX() {
             padding: "16px 24px", display: "flex", justifyContent: "space-between", alignItems: "center", position: "relative", minHeight: 80,
             boxShadow: t.headerShadow,
           }}>
-            <div />
-            {/* Center Logo */}
+            <div className="header-spacer" />
+            {/* Center Logo (desktop) */}
             <div className="logo-wrap" style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%)" }}>
               <OlympusLogo theme={theme} />
             </div>
@@ -2030,6 +2031,23 @@ export default function OmegaDEX() {
                         cursor: "pointer", transition: "all 0.15s",
                       }}>← DEX</button>
                       <span style={{ fontSize: 15, fontWeight: 700, color: t.glass.text }}>Markets</span>
+
+                      {/* Network Toggle */}
+                      <div style={{ display: "flex", background: theme === "dark" ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.05)", borderRadius: 8, padding: 3, gap: 2 }}>
+                        {["solana", "polygon"].map(net => (
+                          <button
+                            key={net}
+                            onClick={() => setPredictionNetwork(net)}
+                            style={{
+                              padding: "4px 10px", borderRadius: 6, border: "none", cursor: "pointer",
+                              background: predictionNetwork === net ? (theme === "dark" ? "rgba(255,255,255,0.15)" : "#fff") : "transparent",
+                              color: predictionNetwork === net ? t.glass.text : t.glass.textTertiary,
+                              boxShadow: predictionNetwork === net ? "0 2px 8px rgba(0,0,0,0.1)" : "none",
+                              fontSize: 11, fontWeight: 700, textTransform: "capitalize", transition: "all 0.2s"
+                            }}
+                          >{net}</button>
+                        ))}
+                      </div>
                     </div>
                     {/* Search */}
                     <div style={{ marginLeft: "auto", position: "relative", maxWidth: 280, flex: "0 1 280px" }}>
@@ -2116,7 +2134,7 @@ export default function OmegaDEX() {
                               onClick={() => {
                                 if (ev.slug) {
                                   setSelectedEventLoading(true);
-                                  fetchPredictionEvent(ev.slug).then((detail) => {
+                                  fetchPredictionEvent(ev.slug, predictionNetwork).then((detail) => {
                                     setSelectedEvent(detail || ev);
                                   }).catch(() => setSelectedEvent(ev)).finally(() => setSelectedEventLoading(false));
                                 } else {
@@ -2725,34 +2743,34 @@ export default function OmegaDEX() {
                     <div style={{ overflow: "auto", height: "calc(100% - 40px)", padding: "12px 20px" }}>
                       {bottomTab === "orders" ? (
                         <div className="dex-orders-table" style={{ overflowX: "auto" }}>
-                        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 10 }}>
-                          <thead>
-                            <tr style={{ color: t.glass.textTertiary, fontSize: 9, letterSpacing: "0.04em" }}>
-                              {["Side", "Price", "Amount", "Filled", "Token", "Chain", "Time", "Action"].map((h) => (
-                                <th key={h} style={{ padding: "5px 10px", textAlign: "left", fontWeight: 500 }}>{h}</th>
-                              ))}
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {openOrders.map((order) => (
-                              <tr key={order.id} style={{ borderTop: "1px solid " + t.glass.border }}>
-                                <td style={{ padding: "7px 10px", fontWeight: 600, color: order.side === "buy" ? t.glass.green : t.glass.red }}>{order.side.toUpperCase()}</td>
-                                <td style={{ padding: "7px 10px", fontFamily: "'SF Mono', monospace" }}>{order.price.toFixed(4)}</td>
-                                <td style={{ padding: "7px 10px", fontFamily: "'SF Mono', monospace" }}>{order.amount.toLocaleString()}</td>
-                                <td style={{ padding: "7px 10px" }}>{order.amount ? Math.round((order.filled || 0) / order.amount * 100) : 0}%</td>
-                                <td style={{ padding: "7px 10px" }}>{order.token || "USDT"}</td>
-                                <td style={{ padding: "7px 10px" }}>{order.chain || "—"}</td>
-                                <td style={{ padding: "7px 10px" }}>{order.timestamp ? new Date(order.timestamp).toLocaleTimeString() : "—"}</td>
-                                <td style={{ padding: "7px 10px" }}>
-                                  <button onClick={() => handleCancelOrder(order.id)} style={{
-                                    background: "none", border: "1px solid " + t.glass.border,
-                                    color: t.glass.text, borderRadius: 4, padding: "2px 8px", cursor: "pointer"
-                                  }}>Cancel</button>
-                                </td>
+                          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 10 }}>
+                            <thead>
+                              <tr style={{ color: t.glass.textTertiary, fontSize: 9, letterSpacing: "0.04em" }}>
+                                {["Side", "Price", "Amount", "Filled", "Token", "Chain", "Time", "Action"].map((h) => (
+                                  <th key={h} style={{ padding: "5px 10px", textAlign: "left", fontWeight: 500 }}>{h}</th>
+                                ))}
                               </tr>
-                            ))}
-                          </tbody>
-                        </table>
+                            </thead>
+                            <tbody>
+                              {openOrders.map((order) => (
+                                <tr key={order.id} style={{ borderTop: "1px solid " + t.glass.border }}>
+                                  <td style={{ padding: "7px 10px", fontWeight: 600, color: order.side === "buy" ? t.glass.green : t.glass.red }}>{order.side.toUpperCase()}</td>
+                                  <td style={{ padding: "7px 10px", fontFamily: "'SF Mono', monospace" }}>{order.price.toFixed(4)}</td>
+                                  <td style={{ padding: "7px 10px", fontFamily: "'SF Mono', monospace" }}>{order.amount.toLocaleString()}</td>
+                                  <td style={{ padding: "7px 10px" }}>{order.amount ? Math.round((order.filled || 0) / order.amount * 100) : 0}%</td>
+                                  <td style={{ padding: "7px 10px" }}>{order.token || "USDT"}</td>
+                                  <td style={{ padding: "7px 10px" }}>{order.chain || "—"}</td>
+                                  <td style={{ padding: "7px 10px" }}>{order.timestamp ? new Date(order.timestamp).toLocaleTimeString() : "—"}</td>
+                                  <td style={{ padding: "7px 10px" }}>
+                                    <button onClick={() => handleCancelOrder(order.id)} style={{
+                                      background: "none", border: "1px solid " + t.glass.border,
+                                      color: t.glass.text, borderRadius: 4, padding: "2px 8px", cursor: "pointer"
+                                    }}>Cancel</button>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
                         </div>
                       ) : bottomTab === "depth" ? (
                         <div style={{ height: "100%" }}><DepthChart depthData={depthData} /></div>
