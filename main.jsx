@@ -1,6 +1,7 @@
 import React, { StrictMode, Component } from 'react'
 import { createRoot } from 'react-dom/client'
 import App from './omega-dex.jsx'
+import './mobile.css'
 
 class ErrorBoundary extends Component {
   state = { hasError: false, error: null }

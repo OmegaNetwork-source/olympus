@@ -1219,14 +1219,14 @@ export default function OmegaDEX() {
         <div style={{ position: "relative", zIndex: 1 }}>
           {/* ═══ TOP NAV ═══ */}
           {/* ═══ TOP NAV ═══ */}
-          <header style={{
+          <header className="olympus-header" style={{
             ...t.panel, margin: "12px 12px 0",
             padding: "16px 24px", display: "flex", justifyContent: "space-between", alignItems: "center", position: "relative", minHeight: 80,
             boxShadow: t.headerShadow,
           }}>
             <div />
             {/* Center Logo */}
-            <div style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%)" }}>
+            <div className="logo-wrap" style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%)" }}>
               <OlympusLogo theme={theme} />
             </div>
 
@@ -1256,6 +1256,7 @@ export default function OmegaDEX() {
                 <div style={{ position: "relative" }}>
                   <button
                     ref={profileButtonRef}
+                    className="wallet-btn"
                     onClick={connected ? () => setShowProfileDropdown(!showProfileDropdown) : wallet.connect}
                     style={{
                       padding: "10px 22px", borderRadius: "100px", fontSize: 13, fontWeight: 700,
@@ -1275,7 +1276,7 @@ export default function OmegaDEX() {
                   {connected && showProfileDropdown && createPortal(
                     <>
                       <div style={{ position: "fixed", inset: 0, zIndex: 9998 }} onClick={() => setShowProfileDropdown(false)} />
-                      <div style={{
+                      <div className="profile-dropdown" style={{
                         position: "fixed",
                         top: (profileButtonRef.current?.getBoundingClientRect?.()?.bottom ?? 70) + 8,
                         right: 16,
@@ -1324,7 +1325,7 @@ export default function OmegaDEX() {
               background: "rgba(0,0,0,0.25)", backdropFilter: "blur(12px)",
               display: "flex", alignItems: "center", justifyContent: "center",
             }} onClick={() => { setShowListTokenModal(false); setListTokenError(null); }}>
-              <div style={{ ...t.panel, padding: 24, width: 400 }} onClick={(e) => e.stopPropagation()}>
+              <div className="olympus-modal" style={{ ...t.panel, padding: 24, width: 400 }} onClick={(e) => e.stopPropagation()}>
                 <div style={{ fontSize: 17, fontWeight: 600, marginBottom: 20, letterSpacing: "-0.02em" }}>List New Token Pair</div>
                 <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
                   <div>
@@ -1423,7 +1424,7 @@ export default function OmegaDEX() {
               background: "rgba(0,0,0,0.4)", backdropFilter: "blur(12px)",
               display: "flex", alignItems: "center", justifyContent: "center", overflow: "auto", padding: 24,
             }} onClick={() => setShowAdminPanel(false)}>
-              <div style={{ ...t.panel, padding: 24, width: 420, maxWidth: "100%", maxHeight: "90vh", overflow: "auto" }} onClick={(e) => e.stopPropagation()}>
+              <div className="olympus-modal" style={{ ...t.panel, padding: 24, width: 420, maxWidth: "100%", maxHeight: "90vh", overflow: "auto" }} onClick={(e) => e.stopPropagation()}>
                 <div style={{ fontSize: 18, fontWeight: 700, marginBottom: 20, letterSpacing: "-0.02em" }}>MM Bot Control</div>
                 {mmConfigError && <div style={{ fontSize: 12, color: t.glass.red, marginBottom: 12 }}>{mmConfigError}</div>}
                 {mmConfigSaved && <div style={{ fontSize: 12, color: t.glass.green, marginBottom: 12 }}>Config saved. MM bot will apply within ~5 seconds.</div>}
@@ -1488,7 +1489,7 @@ export default function OmegaDEX() {
               background: "rgba(0,0,0,0.35)", backdropFilter: "blur(14px)",
               display: "flex", alignItems: "center", justifyContent: "center", padding: 20,
             }} onClick={() => setShowWalletModal(false)}>
-              <div style={{
+              <div className="olympus-modal" style={{
                 ...t.panel, padding: 0, width: "100%", maxWidth: 580, maxHeight: "88vh",
                 display: "flex", flexDirection: "column", overflow: "hidden",
               }} onClick={(e) => e.stopPropagation()}>
@@ -1721,7 +1722,7 @@ export default function OmegaDEX() {
           {page === "dex" && (
             <>
               {/* ═══ TRADING PAIR BAR ═══ */}
-              <div style={{
+              <div className="dex-pair-bar" style={{
                 ...t.panel, margin: "12px 12px 0",
                 padding: "12px 24px", display: "flex", alignItems: "center", gap: 32, flexWrap: "wrap",
                 boxShadow: "0 4px 20px rgba(212,175,55,0.08)",
@@ -2510,13 +2511,13 @@ export default function OmegaDEX() {
           {page === "dex" && (
             <>
               {/* ═══ MAIN GRID ═══ */}
-              <div style={{
+              <div className="dex-main-grid" style={{
                 display: "grid", gridTemplateColumns: "280px 1fr 340px",
                 gap: 12, padding: 12, height: "calc(100vh - 120px)", minHeight: 600,
               }}>
 
                 {/* ─── LEFT: ORDER BOOK ─── */}
-                <div style={{ ...t.panel, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+                <div className="dex-left-panel" style={{ ...t.panel, display: "flex", flexDirection: "column", overflow: "hidden" }}>
                   <div style={{ display: "flex", gap: 6, padding: "12px 12px 6px", background: theme === "dark" ? "rgba(255,255,255,0.04)" : "rgba(212,175,55,0.06)", borderRadius: "100px", margin: "10px 10px 0" }}>
                     {["orderbook", "trades"].map((tab) => (
                       <button key={tab} onClick={() => setActiveTab(tab)} style={{
@@ -2623,10 +2624,10 @@ export default function OmegaDEX() {
                 </div>
 
                 {/* ─── CENTER: CHART + ORDERS ─── */}
-                <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-                  <div style={{ display: "flex", flex: 1, gap: 12 }}>
+                <div className="dex-center-col" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                  <div className="dex-center-row" style={{ display: "flex", flex: 1, gap: 12 }}>
                     {/* ─── CHART TOOLS ─── */}
-                    <div style={{
+                    <div className="dex-chart-tools" style={{
                       ...t.panel, width: 42, display: "flex", flexDirection: "column", alignItems: "center",
                       gap: 16, padding: "16px 0", height: "100%"
                     }}>
@@ -2650,7 +2651,7 @@ export default function OmegaDEX() {
                     </div>
 
 
-                    <div style={{ ...t.panel, flex: 1, position: "relative", overflow: "hidden" }}>
+                    <div className="dex-chart-panel" style={{ ...t.panel, flex: 1, position: "relative", overflow: "hidden" }}>
                       <div style={{
                         display: "flex", alignItems: "center", gap: 6,
                         padding: "10px 14px", borderBottom: "1px solid rgba(255,255,255,0.04)",
@@ -2685,8 +2686,8 @@ export default function OmegaDEX() {
                   </div>
 
 
-                  <div style={{ ...t.panel, height: 220, overflow: "hidden" }}>
-                    <div style={{
+                  <div className="dex-bottom-panel" style={{ ...t.panel, height: 220, overflow: "hidden" }}>
+                    <div className="dex-bottom-tabs" style={{
                       display: "flex", alignItems: "center", padding: "0 14px",
                       borderBottom: "1px solid " + t.glass.border, overflowX: "auto", overflowY: "hidden"
                     }}>
@@ -2723,6 +2724,7 @@ export default function OmegaDEX() {
 
                     <div style={{ overflow: "auto", height: "calc(100% - 40px)", padding: "12px 20px" }}>
                       {bottomTab === "orders" ? (
+                        <div className="dex-orders-table" style={{ overflowX: "auto" }}>
                         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 10 }}>
                           <thead>
                             <tr style={{ color: t.glass.textTertiary, fontSize: 9, letterSpacing: "0.04em" }}>
@@ -2751,6 +2753,7 @@ export default function OmegaDEX() {
                             ))}
                           </tbody>
                         </table>
+                        </div>
                       ) : bottomTab === "depth" ? (
                         <div style={{ height: "100%" }}><DepthChart depthData={depthData} /></div>
                       ) : bottomTab === "history" ? (
@@ -2818,7 +2821,7 @@ export default function OmegaDEX() {
                 </div>
 
                 {/* ─── RIGHT: ORDER FORM ─── */}
-                <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                <div className="dex-right-panel" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
 
                   <div style={{ ...t.panel, padding: 14 }}>
                     <div style={{ fontSize: 9, color: t.glass.textTertiary, marginBottom: 8, letterSpacing: "0.06em", textTransform: "uppercase" }}>Cross-Chain Routing</div>
@@ -2900,8 +2903,8 @@ export default function OmegaDEX() {
 
                   </div>
 
-                  <div style={{ ...t.panel, padding: 14, flex: 1, display: "flex", flexDirection: "column" }}>
-                    <div style={{ display: "flex", gap: 4, marginBottom: 16, padding: 3, borderRadius: 10, background: theme === "dark" ? "rgba(255,255,255,0.04)" : "rgba(212,175,55,0.06)" }}>
+                  <div className="dex-order-form" style={{ ...t.panel, padding: 14, flex: 1, display: "flex", flexDirection: "column" }}>
+                    <div className="form-mode-tabs" style={{ display: "flex", gap: 4, marginBottom: 16, padding: 3, borderRadius: 10, background: theme === "dark" ? "rgba(255,255,255,0.04)" : "rgba(212,175,55,0.06)" }}>
                       {[{ key: "pro", label: "Pro" }, { key: "easy", label: "Easy" }, { key: "ezpeze", label: "EZ PEZE" }].map(m => (
                         <button key={m.key} onClick={() => setFormMode(m.key)} style={{
                           flex: 1, padding: "7px 0", borderRadius: 8, border: "none", cursor: "pointer",
@@ -3249,7 +3252,7 @@ export default function OmegaDEX() {
                           </div>
                         )}
                         {/* UP / DOWN Buttons */}
-                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 4 }}>
+                        <div className="ezpeze-up-down" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 4 }}>
                           <button onClick={() => placeBet("up")} disabled={betPlacing || !ezPezeConfig?.escrowAddress} style={{
                             padding: "20px 0", borderRadius: 16, cursor: betPlacing || !ezPezeConfig?.escrowAddress ? "not-allowed" : "pointer",
                             background: "linear-gradient(135deg, rgba(50,215,75,0.15), rgba(50,215,75,0.08))",

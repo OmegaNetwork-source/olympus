@@ -1,0 +1,191 @@
+/* Mobile-first responsive styles for Olympus DEX */
+
+/* Base: prevent horizontal scroll */
+html, body { overflow-x: hidden; max-width: 100vw; }
+#root { max-width: 100%; min-height: 100vh; }
+
+/* Touch-friendly: prevent zoom on input focus (iOS) */
+@media (max-width: 768px) {
+  input, select, textarea {
+    font-size: 16px !important;
+  }
+}
+
+/* Header: compact on mobile */
+@media (max-width: 768px) {
+  .olympus-header {
+    padding: 12px 14px !important;
+    min-height: 64px !important;
+    margin: 8px 8px 0 !important;
+  }
+  .olympus-header .logo-wrap {
+    transform: scale(0.85) !important;
+  }
+  .olympus-header .wallet-btn {
+    padding: 8px 14px !important;
+    font-size: 11px !important;
+  }
+}
+
+/* Pair bar: compact on mobile */
+@media (max-width: 768px) {
+  .dex-pair-bar {
+    padding: 10px 14px !important;
+    flex-wrap: wrap !important;
+    gap: 12px !important;
+  }
+}
+
+/* Main DEX grid: stack on mobile */
+@media (max-width: 1024px) {
+  .dex-main-grid {
+    grid-template-columns: 1fr !important;
+    height: auto !important;
+    min-height: 0 !important;
+    padding: 8px !important;
+    gap: 8px !important;
+  }
+  .dex-left-panel {
+    max-height: 220px !important;
+    min-height: 180px !important;
+  }
+  .dex-center-row {
+    flex-direction: column !important;
+  }
+  .dex-chart-tools {
+    width: 100% !important;
+    flex-direction: row !important;
+    height: auto !important;
+    padding: 8px !important;
+    gap: 8px !important;
+  }
+  .dex-chart-tools button {
+    width: 36px !important;
+    height: 36px !important;
+  }
+  .dex-chart-panel {
+    min-height: 200px !important;
+    height: 240px !important;
+  }
+  .dex-right-panel {
+    min-height: auto !important;
+  }
+  .dex-bottom-panel {
+    height: 180px !important;
+    min-height: 160px !important;
+  }
+}
+
+@media (max-width: 768px) {
+  .dex-main-grid {
+    padding: 6px !important;
+  }
+  .dex-left-panel {
+    max-height: 200px !important;
+  }
+  .dex-chart-panel {
+    height: 200px !important;
+  }
+  .dex-bottom-panel {
+    height: 160px !important;
+  }
+  .dex-order-form {
+    padding: 12px !important;
+  }
+}
+
+/* Page tabs (DEX / Prediction / Casino): scroll on mobile */
+@media (max-width: 768px) {
+  .page-tabs {
+    padding: 8px 12px !important;
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch;
+  }
+  .page-tabs button {
+    white-space: nowrap;
+  }
+}
+
+/* Modals: full width on mobile */
+@media (max-width: 480px) {
+  .olympus-modal {
+    width: 100% !important;
+    max-width: calc(100vw - 24px) !important;
+    margin: 12px !important;
+    max-height: 90vh !important;
+    overflow-y: auto !important;
+  }
+}
+
+/* Touch-friendly tap targets (44px min) */
+@media (max-width: 768px) {
+  .wallet-btn,
+  .dex-order-form button[type="submit"],
+  .form-mode-tabs button {
+    min-height: 44px !important;
+    min-width: 44px !important;
+  }
+}
+
+/* EZ PEZE / Order form: better mobile spacing */
+@media (max-width: 768px) {
+  .dex-order-form .form-mode-tabs {
+    padding: 4px !important;
+  }
+  .dex-order-form .form-mode-tabs button {
+    padding: 6px 0 !important;
+    font-size: 8px !important;
+  }
+  .ezpeze-up-down {
+    grid-template-columns: 1fr 1fr !important;
+  }
+  .ezpeze-up-down button {
+    padding: 14px 0 !important;
+    font-size: 14px !important;
+  }
+}
+
+/* Tables: horizontal scroll */
+@media (max-width: 768px) {
+  .dex-orders-table,
+  .dex-history-list {
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch;
+  }
+  .dex-orders-table table {
+    min-width: 520px;
+    font-size: 9px !important;
+  }
+  .dex-orders-table th,
+  .dex-orders-table td {
+    padding: 6px 8px !important;
+  }
+}
+
+/* Bottom tabs (Balances, Orders, etc.): scroll horizontally */
+@media (max-width: 768px) {
+  .dex-bottom-tabs {
+    padding: 0 10px !important;
+  }
+  .dex-bottom-tabs > div {
+    padding: 10px 12px !important;
+    font-size: 10px !important;
+  }
+}
+
+/* Profile dropdown: position on mobile */
+@media (max-width: 768px) {
+  .profile-dropdown {
+    left: 12px !important;
+    right: 12px !important;
+    min-width: auto !important;
+  }
+}
+
+/* Safe area for notched phones */
+@supports (padding: max(0px)) {
+  .olympus-header {
+    padding-left: max(12px, env(safe-area-inset-left)) !important;
+    padding-right: max(12px, env(safe-area-inset-right)) !important;
+  }
+}
