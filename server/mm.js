@@ -1,8 +1,29 @@
 import fetch from 'node-fetch';
 import fs from 'fs';
 
-const API_URL = process.env.API_URL || 'http://localhost:3001/api';
+let API_URL = (process.env.API_URL || 'http://localhost:3001/api').replace(/\/+$/, '');
+if (!API_URL.endsWith('/api')) API_URL = API_URL + '/api';
+
 const CONFIG_REFRESH_MS = 3000;
+
+/** Fetch with retry for Render cold start (returns HTML while spinning up) */
+async function apiFetch(url, opts = {}, retries = 5) {
+    for (let i = 0; i < retries; i++) {
+        const res = await fetch(url, opts);
+        const ct = res.headers.get('content-type') || '';
+        const text = await res.text();
+        if (ct.includes('application/json') && !text.trim().startsWith('<')) {
+            try { return { ok: res.ok, data: JSON.parse(text), status: res.status }; } catch (_) {}
+        }
+        if (i < retries - 1) {
+            const delay = Math.min(2000 * (i + 1), 15000);
+            console.log(`[MM] API returned non-JSON (${res.status}), retry in ${delay}ms...`);
+            await new Promise((r) => setTimeout(r, delay));
+        } else {
+            throw new Error(`API returned HTML (status ${res.status}). Check API_URL=${API_URL}`);
+        }
+    }
+}
 
 // --- BASE CONFIG (fetched from API, fallback) ---
 let MM_BASE = {
@@ -22,8 +43,7 @@ let MM_BASE = {
 
 async function fetchMMConfig() {
     try {
-        const res = await fetch(`${API_URL}/mm/config`);
-        const cfg = await res.json();
+        const { data: cfg } = await apiFetch(`${API_URL}/mm/config`);
         if (cfg && typeof cfg.walletAddress === 'string') {
             const prev = JSON.stringify(MM_BASE);
             MM_BASE = { ...MM_BASE, ...cfg };
@@ -89,7 +109,7 @@ async function clearOldOrders(state) {
 
 async function placeOrder(cfg, state, side, price, amount) {
     try {
-        const response = await fetch(`${API_URL}/orders`, {
+        const { data } = await apiFetch(`${API_URL}/orders`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -102,7 +122,6 @@ async function placeOrder(cfg, state, side, price, amount) {
                 pair: cfg.id,
             })
         });
-        const data = await response.json();
         if (data.order) state.activeOrders.push(data.order);
         return data;
     } catch (e) {
@@ -114,8 +133,7 @@ const DEFAULT_MM_PAIR = { id: 'PRE/mUSDC', baseToken: 'PRE', quoteToken: 'mUSDC'
 
 async function fetchMMPairs() {
     try {
-        const res = await fetch(`${API_URL}/pairs`);
-        const pairs = await res.json();
+        const { data: pairs } = await apiFetch(`${API_URL}/pairs`);
         const enabled = (Array.isArray(pairs) ? pairs : []).filter(p => p.mmEnabled);
         if (enabled.length > 0) return enabled;
         return [DEFAULT_MM_PAIR];
@@ -127,8 +145,7 @@ async function fetchMMPairs() {
 
 async function fetchMidPrice(cfg) {
     try {
-        const res = await fetch(`${API_URL}/orderbook?pair=${encodeURIComponent(cfg.id)}`);
-        const data = await res.json();
+        const { data } = await apiFetch(`${API_URL}/orderbook?pair=${encodeURIComponent(cfg.id)}`);
         const mid = data?.midPrice;
         if (typeof mid === 'number' && mid > 0) return mid;
     } catch (e) { /* ignore */ }
@@ -198,8 +215,9 @@ async function runVolumeCycle() {
 }
 
 async function start() {
-    await fetchMMConfig();
     console.log('--- Olympus Market Maker Started ---');
+    console.log(`API: ${API_URL}`);
+    await fetchMMConfig();
     console.log(`Wallet: ${MM_BASE.walletAddress}`);
     console.log(`Config: spread=${MM_BASE.baseSpread}, levels=${MM_BASE.ladderLevels}, orderSize=${MM_BASE.orderSizeBase}`);
     console.log(`Intervals: update=${MM_BASE.updateInterval}ms, volume=${MM_BASE.volumeInterval}ms`);
