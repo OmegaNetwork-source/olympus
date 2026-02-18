@@ -1,0 +1,14 @@
+[
+  {
+    "id": "PRE/mUSDC",
+    "baseToken": "PRE",
+    "quoteToken": "mUSDC",
+    "baseAddress": "0xB8149d86Fb75C9A7e3797d6923c12e5076b6AEd9",
+    "quoteAddress": "0x24A4704dE79819e4Dcb379cC548426F03f663b09",
+    "chain": "Omega",
+    "chainId": 1313161916,
+    "mmEnabled": true,
+    "listedBy": null,
+    "listedAt": 1771358789031
+  }
+]

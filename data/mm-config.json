@@ -1,0 +1,14 @@
+{
+  "walletAddress": "0x32Be343B94f860124dC4fEe278FDCBD38C102D88",
+  "baseSpread": 0.0005,
+  "ladderLevels": 40,
+  "orderSizeBase": 25000,
+  "volumeInterval": 2500,
+  "updateInterval": 2000,
+  "meanPrice": 0.135,
+  "priceMin": 0.11,
+  "priceMax": 0.16,
+  "volatilityLow": 0.001,
+  "volatilityMid": 0.005,
+  "volatilityHigh": 0.02
+}
