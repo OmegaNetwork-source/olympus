@@ -1773,7 +1773,7 @@ export default function OmegaDEX() {
                     { label: "24h Vol", value: `$${totalVolUSD >= 1000 ? (totalVolUSD / 1000).toFixed(1) + "K" : totalVolUSD.toFixed(0)}` },
                   ];
                 })().map((s, i) => (
-                  <div key={i} style={{ borderLeft: "1px solid " + t.glass.border, paddingLeft: 16 }}>
+                  <div key={i} className="dex-pair-bar-stats-item" style={{ borderLeft: "1px solid " + t.glass.border, paddingLeft: 16 }}>
                     <div style={{ fontSize: 9, color: t.glass.textTertiary, marginBottom: 2, letterSpacing: "0.02em" }}>{s.label}</div>
                     <div style={{ fontSize: 13, fontWeight: 600, color: s.color || t.glass.textSecondary, letterSpacing: "-0.01em" }}>{s.value}</div>
                   </div>
@@ -2823,7 +2823,7 @@ export default function OmegaDEX() {
                 {/* ─── RIGHT: ORDER FORM ─── */}
                 <div className="dex-right-panel" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
 
-                  <div style={{ ...t.panel, padding: 14 }}>
+                  <div className="dex-cross-chain" style={{ ...t.panel, padding: 14 }}>
                     <div style={{ fontSize: 9, color: t.glass.textTertiary, marginBottom: 8, letterSpacing: "0.06em", textTransform: "uppercase" }}>Cross-Chain Routing</div>
                     <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 12px", ...t.panelInner }}>
                       {/* SOURCE */}
@@ -2919,12 +2919,10 @@ export default function OmegaDEX() {
 
                     {formMode === "pro" ? (
                       <>
-                        <div style={{
+                        <div className="dex-buy-sell-toggle" style={{
                           display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, padding: 4,
                           borderRadius: "100px", background: "rgba(212,175,55,0.06)", marginBottom: 18,
                         }}>
-
-
                           {["buy", "sell"].map((s) => (
                             <button key={s} onClick={() => { setSide(s); setPriceManuallyEdited(false); }} style={{
                               padding: "12px 0", borderRadius: "100px", border: "none", cursor: "pointer",
@@ -2957,7 +2955,7 @@ export default function OmegaDEX() {
                           ))}
                         </div>
 
-                        <div style={{ marginBottom: 12 }}>
+                        <div className="dex-pay-with" style={{ marginBottom: 12 }}>
 
                           <div style={{ fontSize: 10, color: t.glass.textTertiary, marginBottom: 6 }}>Pay With</div>
                           <div style={{ display: "flex", gap: 3, flexWrap: "wrap" }}>
@@ -2978,45 +2976,53 @@ export default function OmegaDEX() {
                             <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, color: t.glass.textTertiary, marginBottom: 5 }}>
                               <span>Price</span><span>mUSDC</span>
                             </div>
-                            <div style={{ ...t.panelInner, display: "flex", alignItems: "center", overflow: "hidden" }}>
-                              <button onClick={() => { setPrice((p) => (parseFloat(p) - 0.0001).toFixed(4)); setPriceManuallyEdited(true); }} style={{
-                                width: 34, height: 38, border: "none", background: theme === "dark" ? "rgba(255,255,255,0.03)" : "rgba(212,175,55,0.04)",
-                                color: t.glass.textSecondary, cursor: "pointer", fontSize: 15, fontWeight: 300,
+                            <div className="order-price-row" style={{ ...t.panelInner, display: "flex", alignItems: "center", overflow: "hidden" }}>
+                              <button type="button" className="order-input-step" onClick={() => { setPrice((p) => (parseFloat(p) - 0.0001).toFixed(4)); setPriceManuallyEdited(true); }} style={{
+                                width: 44, minWidth: 44, height: 44, border: "none", background: theme === "dark" ? "rgba(255,255,255,0.03)" : "rgba(212,175,55,0.04)",
+                                color: t.glass.textSecondary, cursor: "pointer", fontSize: 20, fontWeight: 300, flexShrink: 0,
                               }}>−</button>
                               <input type="text" value={price} onChange={(e) => { setPrice(e.target.value); setPriceManuallyEdited(true); }} style={{
                                 flex: 1, padding: "9px 6px", background: "none", border: "none",
                                 color: t.glass.text, fontSize: 13, fontWeight: 600, textAlign: "center",
                                 fontFamily: "'SF Mono', monospace", outline: "none",
                               }} />
-                              <button onClick={() => { setPrice((p) => (parseFloat(p) + 0.0001).toFixed(4)); setPriceManuallyEdited(true); }} style={{
-                                width: 34, height: 38, border: "none", background: theme === "dark" ? "rgba(255,255,255,0.03)" : "rgba(212,175,55,0.06)",
-                                color: t.glass.textSecondary, cursor: "pointer", fontSize: 15, fontWeight: 300,
+                              <button type="button" className="order-input-step" onClick={() => { setPrice((p) => (parseFloat(p) + 0.0001).toFixed(4)); setPriceManuallyEdited(true); }} style={{
+                                width: 44, minWidth: 44, height: 44, border: "none", background: theme === "dark" ? "rgba(255,255,255,0.03)" : "rgba(212,175,55,0.06)",
+                                color: t.glass.textSecondary, cursor: "pointer", fontSize: 20, fontWeight: 300, flexShrink: 0,
                               }}>+</button>
                             </div>
                           </div>
                         )}
 
-                        <div style={{ marginBottom: 12 }}>
+                        <div className="order-amount-row" style={{ marginBottom: 12 }}>
                           <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, color: t.glass.textTertiary, marginBottom: 5 }}>
                             <span>Amount</span><span>PRE</span>
                           </div>
-                          <div style={{ ...t.panelInner, overflow: "hidden" }}>
+                          <div style={{ ...t.panelInner, display: "flex", alignItems: "center", overflow: "hidden" }}>
+                            <button type="button" className="order-input-step" onClick={() => { const a = parseFloat(amount) || 0; setAmount(Math.max(0, a - 1).toString()); }} style={{
+                              width: 44, minWidth: 44, height: 44, border: "none", background: theme === "dark" ? "rgba(255,255,255,0.03)" : "rgba(212,175,55,0.04)",
+                              color: t.glass.textSecondary, cursor: "pointer", fontSize: 20, fontWeight: 300, flexShrink: 0,
+                            }}>−</button>
                             <input type="text" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0.00" style={{
-                              width: "100%", padding: "9px 12px", background: "none", border: "none",
-                              color: t.glass.text, fontSize: 13, fontWeight: 600, fontFamily: "'SF Mono', monospace", outline: "none",
+                              flex: 1, padding: "9px 8px", background: "none", border: "none",
+                              color: t.glass.text, fontSize: 15, fontWeight: 600, fontFamily: "'SF Mono', monospace", outline: "none", textAlign: "center", minWidth: 0,
                             }} />
+                            <button type="button" className="order-input-step" onClick={() => { const a = parseFloat(amount) || 0; setAmount((a + 1).toString()); }} style={{
+                              width: 44, minWidth: 44, height: 44, border: "none", background: theme === "dark" ? "rgba(255,255,255,0.03)" : "rgba(212,175,55,0.06)",
+                              color: t.glass.textSecondary, cursor: "pointer", fontSize: 20, fontWeight: 300, flexShrink: 0,
+                            }}>+</button>
                           </div>
                         </div>
 
-                        <div style={{ marginBottom: 14, padding: "0 2px" }}>
+                        <div className="dex-quantity-slider" style={{ marginBottom: 14, padding: "0 2px" }}>
                           <input type="range" min="0" max="100" value={sliderValue} onChange={(e) => setSliderValue(e.target.value)} style={{
                             width: "100%", height: 3, appearance: "none",
                             background: `linear-gradient(to right, ${side === "buy" ? t.glass.green : t.glass.red} 0%, ${side === "buy" ? t.glass.green : t.glass.red} ${sliderValue}%, rgba(212,175,55,0.15) ${sliderValue}%, rgba(212,175,55,0.15) 100%)`,
                             borderRadius: 3, outline: "none", cursor: "pointer",
                           }} />
-                          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 9, color: t.glass.textTertiary, marginTop: 4 }}>
+                          <div className="slider-percent-markers" style={{ display: "flex", justifyContent: "space-between", fontSize: 9, color: t.glass.textTertiary, marginTop: 4 }}>
                             {["0%", "25%", "50%", "75%", "100%"].map((v) => (
-                              <span key={v} style={{ cursor: "pointer" }} onClick={() => setSliderValue(parseInt(v))}>{v}</span>
+                              <span key={v} style={{ cursor: "pointer", padding: "4px 2px", minWidth: 28, textAlign: "center" }} onClick={() => setSliderValue(parseInt(v))}>{v}</span>
                             ))}
                           </div>
                         </div>
@@ -3028,6 +3034,7 @@ export default function OmegaDEX() {
 
                         {orderError && <div style={{ fontSize: 11, color: t.glass.red, marginBottom: 8 }}>{orderError}</div>}
                         <button
+                          className="dex-order-submit-btn"
                           onClick={handlePlaceOrder}
                           disabled={orderLoading}
                           style={{
