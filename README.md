@@ -49,3 +49,21 @@ EZ PEZE uses real PRE for price-up/down bets with 1.5x payout to winners.
 4. Optional: `OMEGA_RPC` to override the Omega RPC URL
 
 Without the escrow key, bets cannot be placed (frontend will show "Escrow not configured").
+
+## Deployment (Render + Vercel)
+
+### 1. API (Render Web Service)
+- Connect repo to Render, create **Web Service**
+- **Build:** `npm install`
+- **Start:** `node server/server.js`
+- **Env vars:** `EZ_PEZE_ESCROW_PRIVATE_KEY`, `NODE_ENV=production`
+- Uses `PORT` from Render automatically
+
+### 2. MM Bot (Render Background Worker)
+- Same repo, create **Background Worker**
+- **Start:** `node server/mm.js`
+- **Env var:** `API_URL=https://your-api.onrender.com/api`
+
+### 3. Frontend (Vercel)
+- Connect repo, deploy with Vite preset
+- **Env var:** `VITE_API_URL=https://your-api.onrender.com`

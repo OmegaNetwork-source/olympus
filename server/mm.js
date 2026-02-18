@@ -1,7 +1,7 @@
 import fetch from 'node-fetch';
 import fs from 'fs';
 
-const API_URL = 'http://localhost:3001/api';
+const API_URL = process.env.API_URL || 'http://localhost:3001/api';
 const CONFIG_REFRESH_MS = 3000;
 
 // --- BASE CONFIG (fetched from API, fallback) ---

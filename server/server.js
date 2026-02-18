@@ -1,4 +1,5 @@
 import "dotenv/config";
+import http from "http";
 import express from "express";
 import cors from "cors";
 import { WebSocketServer } from "ws";
@@ -8,9 +9,13 @@ import path from "path";
 import { ethers } from "ethers";
 
 const app = express();
-const PORT = 3001;
+const PORT = process.env.PORT || 3001;
 
-app.use(cors({ origin: ["http://localhost:5173", "http://127.0.0.1:5173"] }));
+app.use(cors({
+  origin: process.env.NODE_ENV === "production"
+    ? true
+    : ["http://localhost:5173", "http://127.0.0.1:5173"],
+}));
 app.use(express.json());
 
 // ─── Admin wallet (only this address sees admin panel) ───
@@ -206,8 +211,9 @@ listedPairs.forEach((p) => {
   if (ob.orders.size === 0) seedOrderBook(ob, p.id);
 });
 
-// WebSocket broadcast
-const wss = new WebSocketServer({ port: 3002 });
+// WebSocket broadcast (attach to HTTP server for single-port deployment)
+const httpServer = http.createServer(app);
+const wss = new WebSocketServer({ server: httpServer });
 const clients = new Set();
 wss.on("connection", (ws) => {
   clients.add(ws);
@@ -851,8 +857,8 @@ app.get("/api/prediction/tags", async (_req, res) => {
 
 app.get("/api/health", (req, res) => res.json({ ok: true }));
 
-// Start
-app.listen(PORT, () => {
+// Start (Express + WebSocket on same port for Render/Vercel compatibility)
+httpServer.listen(PORT, () => {
   console.log(`Omega DEX API http://localhost:${PORT}`);
-  console.log(`WebSocket ws://localhost:3002`);
+  console.log(`WebSocket on same port`);
 });
