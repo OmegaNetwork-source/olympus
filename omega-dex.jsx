@@ -844,29 +844,45 @@ const ZEROX_COINGECKO_FALLBACK = {
   "PENGU": "pudgy-penguins", "DEGEN": "degen-base",
 };
 
+// ... (previous code)
+
 const BINANCE_MAPPING = {
-  "ethereum": "ETHUSDT", "bitcoin": "BTCUSDT", "solana": "SOLUSDT",
-  "ripple": "XRPUSDT", "matic-network": "MATICUSDT", "arbitrum": "ARBUSDT",
-  "optimism": "OPUSDT", "avalanche-2": "AVAXUSDT", "binancecoin": "BNBUSDT",
-  "dogecoin": "DOGEUSDT", "chainlink": "LINKUSDT", "uniswap": "UNIUSDT",
-  "aave": "AAVEUSDT", "cardano": "ADAUSDT", "polkadot": "DOTUSDT",
-  "shiba-inu": "SHIBUSDT", "pepe": "PEPEUSDT", "fetch-ai": "FETUSDT",
-  "render-token": "RNDRUSDT", "near": "NEARUSDT", "aptos": "APTUSDT",
-  "sui": "SUIUSDT", "sei-network": "SEIUSDT", "celestia": "TIAUSDT",
-  "injective-protocol": "INJUSDT", "fantom": "FTMUSDT",
-  "the-open-network": "TONUSDT", "bonk": "BONKUSDT", "floki": "FLOKIUSDT",
-  "dogwifhat": "WIFUSDT", "worldcoin": "WLDUSDT",
+  "ethereum": "ethusdt", "bitcoin": "btcusdt", "solana": "solusdt",
+  "ripple": "xrpusdt", "matic-network": "maticusdt", "arbitrum": "arbusdt",
+  "optimism": "opusdt", "avalanche-2": "axaxusdt", "binancecoin": "bnbusdt",
+  "dogecoin": "dogeusdt", "chainlink": "linkusdt", "uniswap": "uniusdt",
+  "aave": "aaveusdt", "cardano": "adausdt", "polkadot": "dotusdt",
+  "shiba-inu": "shibusdt", "pepe": "pepeusdt", "fetch-ai": "fetusdt",
+  "render-token": "rndrusdt", "near": "nearusdt", "aptos": "aptusdt",
+  "sui": "suiusdt", "sei-network": "seiusdt", "celestia": "tiausdt",
+  "injective-protocol": "injusdt", "fantom": "ftmusdt",
+  "the-open-network": "tonusdt", "bonk": "bonkusdt", "floki": "flokiusdt",
+  "dogwifhat": "wifusdt", "worldcoin": "wldusdt",
 };
 
-async function fetchBinanceClient(cgId) {
-  const symbol = BINANCE_MAPPING[cgId];
-  if (!symbol) return null;
-  try {
-    const r = await fetch(`https://api.binance.com/api/v3/ticker/price?symbol=${symbol}`);
-    if (!r.ok) return null;
-    const d = await r.json();
-    return parseFloat(d.price);
-  } catch { return null; }
+function useBinancePrice(cgId) {
+  const [price, setPrice] = useState(null);
+
+  useEffect(() => {
+    if (!cgId) { setPrice(null); return; }
+    const symbol = BINANCE_MAPPING[cgId];
+    if (!symbol) { setPrice(null); return; }
+
+    const ws = new WebSocket(`wss://stream.binance.com:9443/ws/${symbol}@trade`);
+
+    ws.onmessage = (event) => {
+      const data = JSON.parse(event.data);
+      if (data && data.p) {
+        setPrice(parseFloat(data.p));
+      }
+    };
+
+    return () => {
+      ws.close();
+    };
+  }, [cgId]);
+
+  return price;
 }
 // Non-EVM pairs: Chart + News + Technical + EZ Peeze only (no Swap). coingeckoId used for price via /api/coingecko-price.
 const NON_EVM_PAIRS = [
@@ -1267,6 +1283,9 @@ export default function OmegaDEX() {
     return "https://olympus-api-n3xm.onrender.com";
   }, []);
 
+  const activeCgId = zeroxPair ? ZEROX_COINGECKO_FALLBACK[zeroxPair.baseToken] : (nonEvmPair ? nonEvmPair.coingeckoId : null);
+  const liveBinancePrice = useBinancePrice(activeCgId);
+
   const loadData = useCallback(async () => {
     try {
       setApiError(null);
@@ -1275,17 +1294,27 @@ export default function OmegaDEX() {
         const cgId = ZEROX_COINGECKO_FALLBACK[zeroxPair.baseToken];
         let mid = 0;
         if (cgId) {
-          // 1. Try Client-side Binance (Instant)
-          const binancePrice = await fetchBinanceClient(cgId);
-          if (binancePrice) mid = binancePrice;
+          // 1. Live WebSocket Price (Instant)
+          if (liveBinancePrice) mid = liveBinancePrice;
 
-          // 2. Try Backend (CoinGecko / Fallback)
+          // 2. Fallback to REST (if WS hasn't connected or failed)
           if (mid <= 0 && API_BASE) {
             try {
-              const r = await fetch(`${API_BASE}/api/coingecko-price?id=${encodeURIComponent(cgId)}`);
-              const data = r.ok ? await r.json().catch(() => ({})) : {};
-              const priceNum = data?.price != null ? Number(data.price) : NaN;
-              if (Number.isFinite(priceNum) && priceNum > 0) mid = priceNum;
+              // Try client-side REST first for speed if WS isn't ready
+              if (!liveBinancePrice) {
+                const sym = BINANCE_MAPPING[cgId];
+                if (sym) {
+                  const r = await fetch(`https://api.binance.com/api/v3/ticker/price?symbol=${sym.toUpperCase()}`);
+                  if (r.ok) { const d = await r.json(); mid = parseFloat(d.price); }
+                }
+              }
+
+              if (mid <= 0) {
+                const r = await fetch(`${API_BASE}/api/coingecko-price?id=${encodeURIComponent(cgId)}`);
+                const data = r.ok ? await r.json().catch(() => ({})) : {};
+                const priceNum = data?.price != null ? Number(data.price) : NaN;
+                if (Number.isFinite(priceNum) && priceNum > 0) mid = priceNum;
+              }
             } catch (_) { }
           }
         }
@@ -1335,16 +1364,24 @@ export default function OmegaDEX() {
           const cgId = nonEvmPair.coingeckoId;
           let priceNum = NaN;
           if (cgId) {
-            // 1. Try Client-side Binance (Instant)
-            const binancePrice = await fetchBinanceClient(cgId);
-            if (binancePrice) priceNum = binancePrice;
+            // 1. Live WebSocket Price (Instant)
+            if (liveBinancePrice) priceNum = liveBinancePrice;
 
-            // 2. Try Backend (CoinGecko / Fallback)
+            // 2. Fallback
             if ((!Number.isFinite(priceNum) || priceNum <= 0) && API_BASE) {
               try {
-                const r = await fetch(`${API_BASE}/api/coingecko-price?id=${encodeURIComponent(cgId)}`);
-                const data = r.ok ? await r.json().catch(() => ({})) : {};
-                priceNum = data?.price != null ? Number(data.price) : NaN;
+                if (!liveBinancePrice) {
+                  const sym = BINANCE_MAPPING[cgId];
+                  if (sym) {
+                    const r = await fetch(`https://api.binance.com/api/v3/ticker/price?symbol=${sym.toUpperCase()}`);
+                    if (r.ok) { const d = await r.json(); priceNum = parseFloat(d.price); }
+                  }
+                }
+                if (!Number.isFinite(priceNum) || priceNum <= 0) {
+                  const r = await fetch(`${API_BASE}/api/coingecko-price?id=${encodeURIComponent(cgId)}`);
+                  const data = r.ok ? await r.json().catch(() => ({})) : {};
+                  priceNum = data?.price != null ? Number(data.price) : NaN;
+                }
               } catch (_) { }
             }
           }
@@ -1421,6 +1458,13 @@ export default function OmegaDEX() {
     priceFeedRetryRef.current.timer = t;
     return () => clearTimeout(t);
   }, [apiError, zeroxPair, loadData]);
+  // Force re-render when live price updates to keep UI snappy
+  useEffect(() => {
+    if (liveBinancePrice && liveBinancePrice > 0) {
+      loadData();
+    }
+  }, [liveBinancePrice]);
+
   useEffect(() => {
     if (!zeroxPair) priceFeedRetryRef.current = { count: 0, timer: null };
   }, [selectedPair, zeroxPair]);
