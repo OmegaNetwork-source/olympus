@@ -826,6 +826,15 @@ const ZEROX_PAIRS = [
   { id: "ETH/USDC-AVAX", baseToken: "ETH", quoteToken: "USDC", chainId: 43114, baseAddress: WETH_AVAX, quoteAddress: USDC_AVAX, tradingViewSymbol: "BINANCE:ETHUSDC" },
 ];
 
+// When 0x fails, fallback to CoinGecko for display (baseToken -> CoinGecko id)
+const ZEROX_COINGECKO_FALLBACK = {
+  ETH: "ethereum", ARB: "arbitrum", OP: "optimism", MATIC: "matic-network", LINK: "chainlink",
+  UNI: "uniswap", AAVE: "aave", CRV: "curve-dao-token", PEPE: "pepe", SHIB: "shiba-inu",
+  SAND: "the-sandbox", MANA: "decentraland", FLOKI: "floki", BONK: "bonk", WIF: "dogwifhat",
+  FET: "fetch-ai", DOT: "polkadot", LDO: "lido-dao", DEGEN: "degen-base", CAKE: "pancakeswap-token",
+  DOGE: "dogecoin", BNB: "binancecoin",
+};
+
 // Non-EVM pairs: Chart + News + Technical + EZ Peeze only (no Swap)
 const NON_EVM_PAIRS = [
   { id: "SOL/USDC", baseToken: "SOL", quoteToken: "USDC", tradingViewSymbol: "BINANCE:SOLUSDT", chainLabel: "Solana" },
@@ -1207,26 +1216,44 @@ export default function OmegaDEX() {
       if (zeroxPair) {
         const taker = wallet.address || "0x0000000000000000000000000000000000000000";
         const sellAmt = "1000000000000000000";
-        const p = await getPrice({
-          chainId: zeroxPair.chainId,
-          sellToken: zeroxPair.baseAddress,
-          buyToken: zeroxPair.quoteAddress,
-          sellAmount: sellAmt,
-          taker,
-        });
-        const quoteDecimals = zeroxPair.quoteDecimals ?? 6;
-        const mid = parseFloat(ethers.formatUnits(p.buyAmount || "0", quoteDecimals));
-        const spread = mid * 0.0005;
-        setOrderBook({
-          midPrice: mid,
-          asks: [{ price: mid + spread, amount: 100, total: 100 * (mid + spread) }],
-          bids: [{ price: mid - spread, amount: 100, total: 100 * (mid - spread) }],
-        });
-        setTrades([]);
-        setDepthData({
-          bids: [{ price: mid - spread, amount: 100, cumulative: 100 }],
-          asks: [{ price: mid + spread, amount: 100, cumulative: 100 }],
-        });
+        let mid = 0;
+        try {
+          const p = await getPrice({
+            chainId: zeroxPair.chainId,
+            sellToken: zeroxPair.baseAddress,
+            buyToken: zeroxPair.quoteAddress,
+            sellAmount: sellAmt,
+            taker,
+          });
+          const quoteDecimals = zeroxPair.quoteDecimals ?? 6;
+          mid = parseFloat(ethers.formatUnits(p.buyAmount || "0", quoteDecimals));
+        } catch (zeroxErr) {
+          const cgId = ZEROX_COINGECKO_FALLBACK[zeroxPair.baseToken];
+          if (cgId && API_BASE) {
+            try {
+              const r = await fetch(`${API_BASE}/api/coingecko-price?id=${encodeURIComponent(cgId)}`);
+              const data = r.ok ? await r.json().catch(() => ({})) : {};
+              const priceNum = data?.price != null ? Number(data.price) : NaN;
+              if (Number.isFinite(priceNum) && priceNum > 0) mid = priceNum;
+            } catch (_) {}
+          }
+          if (mid <= 0) throw zeroxErr;
+        }
+        if (mid > 0) {
+          const spread = mid * 0.0005;
+          setOrderBook({
+            midPrice: mid,
+            asks: [{ price: mid + spread, amount: 100, total: 100 * (mid + spread) }],
+            bids: [{ price: mid - spread, amount: 100, total: 100 * (mid - spread) }],
+          });
+          setTrades([]);
+          setDepthData({
+            bids: [{ price: mid - spread, amount: 100, cumulative: 100 }],
+            asks: [{ price: mid + spread, amount: 100, cumulative: 100 }],
+          });
+        } else {
+          throw new Error("0x price failed and no fallback");
+        }
       } else if (nonEvmPair) {
         try {
           const url = API_BASE ? `${API_BASE}/api/non-evm-price?pairId=${encodeURIComponent(nonEvmPair.id)}` : `/api/non-evm-price?pairId=${encodeURIComponent(nonEvmPair.id)}`;

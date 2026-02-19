@@ -56,8 +56,12 @@ Without the escrow key, bets cannot be placed (frontend will show "Escrow not co
 - Connect repo to Render, create **Web Service**
 - **Build:** `npm install`
 - **Start:** `node server/server.js`
-- **Env vars:** `EZ_PEZE_ESCROW_PRIVATE_KEY`, `NODE_ENV=production`
-- Uses `PORT` from Render automatically
+- **Env vars:**
+  - `EZ_PEZE_ESCROW_PRIVATE_KEY` (optional, for EZ Peeze)
+  - `NODE_ENV=production`
+  - **`ZEROX_API_KEY`** – Your [0x API key](https://0x.org/docs/api#request-access) (required for swap prices and quotes; without it you get "0x API returned invalid response")
+  - `OMEGA_RPC` (optional)
+- Uses `PORT` from Render automatically. **News (Google News RSS)** is fetched by this server; no extra API key needed.
 
 ### 2. MM Bot (Render Background Worker)
 - Same repo, create **Background Worker**
@@ -65,5 +69,7 @@ Without the escrow key, bets cannot be placed (frontend will show "Escrow not co
 - **Env var:** `API_URL=https://your-api.onrender.com/api`
 
 ### 3. Frontend (Vercel)
-- Connect repo, deploy with Vite preset
-- **Env var:** `VITE_API_URL=https://your-api.onrender.com`
+- Connect repo, deploy with **Vite** (build command: `npm run build`, output: `dist`)
+- **Env vars (Settings → Environment Variables):**
+  - **`VITE_API_URL`** – Your backend URL, e.g. `https://your-app-name.onrender.com` (no trailing slash). Required so the app can call the API for 0x proxy, news, pairs, EZ Peeze, etc.
+- You do **not** need to put the 0x API key in Vercel; the backend uses it. News is served by the same backend.

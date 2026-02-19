@@ -259,6 +259,29 @@ app.get("/api/zerox/quote", async (req, res) => {
   }
 });
 
+// Health check (for deployment: verify backend is reachable)
+app.get("/api/health", (req, res) => {
+  res.json({ ok: true, service: "olympus-api", ts: Date.now() });
+});
+
+// CoinGecko simple price (for 0x fallback: when 0x fails, client can show price from here)
+app.get("/api/coingecko-price", async (req, res) => {
+  const id = (req.query.id || req.query.coingeckoId || "").trim().toLowerCase();
+  if (!id) return res.status(400).json({ error: "Missing id (CoinGecko token id)" });
+  try {
+    const r = await fetch(
+      `https://api.coingecko.com/api/v3/simple/price?ids=${encodeURIComponent(id)}&vs_currencies=usd`,
+      { headers: { Accept: "application/json", "User-Agent": "OmegaDEX/1.0" } }
+    );
+    const data = await r.json();
+    const price = data?.[id]?.usd;
+    if (typeof price !== "number") return res.status(502).json({ error: "Price not available", id });
+    res.json({ price, id });
+  } catch (e) {
+    res.status(502).json({ error: e.message || "CoinGecko failed", id });
+  }
+});
+
 // Crypto news – Google News RSS search for " ticker crypto" (e.g. "ETH crypto")
 function parseGoogleNewsRss(xml) {
   const items = [];
@@ -313,9 +336,12 @@ app.get("/api/crypto-news", async (req, res) => {
     if (r.ok && xml && xml.includes("<item>")) {
       const parsed = parseGoogleNewsRss(xml);
       items.push(...parsed.slice(0, 25));
+    } else {
+      console.warn("[crypto-news] No items from Google RSS", { ticker: searchQuery, status: r.status, xmlLen: xml?.length });
     }
     res.json({ items, searchUrl });
   } catch (e) {
+    console.warn("[crypto-news] Fetch failed:", e.message);
     res.status(500).json({ items: [], searchUrl, error: e.message || "Failed to fetch news" });
   }
 });
@@ -339,9 +365,12 @@ app.get("/api/news", async (req, res) => {
     if (r.ok && xml && xml.includes("<item>")) {
       const parsed = parseGoogleNewsRss(xml);
       items.push(...parsed.slice(0, 20));
+    } else {
+      console.warn("[news] No items from Google RSS", { query: searchQuery, status: r.status, xmlLen: xml?.length });
     }
     res.json({ items, searchUrl, query: searchQuery });
   } catch (e) {
+    console.warn("[news] Fetch failed:", e.message);
     res.status(500).json({ items: [], searchUrl, query: searchQuery, error: e.message || "Failed to fetch news" });
   }
 });

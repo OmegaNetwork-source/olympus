@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 
-const API_BASE = import.meta.env.VITE_API_BASE || "";
+const API_BASE = (import.meta.env.VITE_API_URL || import.meta.env.VITE_API_BASE || "").replace(/\/$/, "");
 
 /**
  * Google News search for "ticker crypto" – shows recent news for the selected pair.
