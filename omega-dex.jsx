@@ -875,24 +875,74 @@ function getBinanceSymbol(cgId, baseToken) {
   return symbol;
 }
 
-// Binance via CORS proxy (works when backend is down or Binance blocks direct). Try 2 proxies.
+// Always return a string for Current Price so the UI is never blank.
+function getCurrentPriceDisplay(orderBook, nonEvmPair, nonEvmPriceFailed) {
+  if (nonEvmPair && (nonEvmPriceFailed || orderBook?.midPrice === 0)) return "\u2014"; // em dash
+  const p = orderBook?.midPrice;
+  if (p != null && Number(p) > 0) return Number(p).toFixed(4);
+  return "0.0000";
+}
+
+// Relayer: server calls Binance 1:1, returns price to the site. No CORS; no scraping the chart (TradingView widget doesn't expose price).
+// Try API_BASE first when on localhost so "npm run dev" alone gets price from Render; otherwise try same-origin /api then API_BASE.
+const RELAYER_FETCH_MS = 8000;
+async function fetchBinancePriceFromRelayer(binanceSymbol, apiBase) {
+  const sym = (binanceSymbol || "").toString().toUpperCase();
+  if (!sym || typeof window === "undefined") return null;
+  const sameOrigin = "/api/binance-price";
+  const apiBaseUrl = apiBase ? `${apiBase.replace(/\/$/, "")}/api/binance-price` : null;
+  const isLocal = typeof window !== "undefined" && /^https?:\/\/localhost(:\d+)?$|^https?:\/\/127\.0\.0\.1(:\d+)?$/i.test(window.location.origin);
+  const urls = isLocal && apiBaseUrl ? [apiBaseUrl, sameOrigin] : [sameOrigin, apiBaseUrl].filter(Boolean);
+  for (const base of urls) {
+    try {
+      const c = new AbortController();
+      const t = setTimeout(() => c.abort(), RELAYER_FETCH_MS);
+      const r = await fetch(`${base}?symbol=${encodeURIComponent(sym)}`, { signal: c.signal });
+      clearTimeout(t);
+      if (!r.ok) continue;
+      const d = await r.json().catch(() => ({}));
+      const p = d?.price != null && Number.isFinite(Number(d.price)) ? Number(d.price) : null;
+      if (p != null && p > 0) return p;
+    } catch (_) { }
+  }
+  return null;
+}
+
+// Binance price: try CORS proxies first, then direct (works on localhost in some environments).
+const CORS_PROXY_FETCH_MS = 6000;
 async function fetchBinancePriceViaCorsProxy(binanceSymbol) {
   const sym = (binanceSymbol || "").toString().toUpperCase();
   if (!sym) return null;
   const url = `https://api.binance.com/api/v3/ticker/price?symbol=${sym}`;
+  const tryFetch = async (targetUrl) => {
+    const c = new AbortController();
+    const t = setTimeout(() => c.abort(), CORS_PROXY_FETCH_MS);
+    try {
+      const r = await fetch(targetUrl, { signal: c.signal });
+      clearTimeout(t);
+      if (!r.ok) return null;
+      const d = await r.json().catch(() => ({}));
+      return d?.price ? parseFloat(d.price) : null;
+    } catch (_) {
+      clearTimeout(t);
+      return null;
+    }
+  };
   const proxies = [
     (u) => `https://api.allorigins.win/raw?url=${encodeURIComponent(u)}`,
     (u) => `https://corsproxy.io/?${encodeURIComponent(u)}`,
+    (u) => `https://cors.bridged.cc/${u}`,
   ];
   for (const toProxyUrl of proxies) {
     try {
-      const r = await fetch(toProxyUrl(url));
-      if (r.ok) {
-        const d = await r.json().catch(() => ({}));
-        if (d?.price) return parseFloat(d.price);
-      }
+      const price = await tryFetch(toProxyUrl(url));
+      if (price != null && price > 0) return price;
     } catch (_) { }
   }
+  try {
+    const price = await tryFetch(url);
+    if (price != null && price > 0) return price;
+  } catch (_) { }
   return null;
 }
 
@@ -1353,11 +1403,15 @@ export default function OmegaDEX() {
       setApiError(null);
       if (zeroxPair) {
         let mid = 0;
-        // 1. Same source as chart: Binance via CORS proxy first (works locally without API and in prod when backend is down)
+        // 1. Relayer first: /api/binance-price (Vite proxy → local API, or Vercel serverless) or API_BASE
         if (chartPair?.tradingViewSymbol?.startsWith("BINANCE:")) {
           const sym = chartPair.tradingViewSymbol.replace(/^BINANCE:/i, "");
-          const p = await fetchBinancePriceViaCorsProxy(sym);
+          const p = await fetchBinancePriceFromRelayer(sym, API_BASE);
           if (p != null && p > 0) mid = p;
+          if (mid <= 0) {
+            const p2 = await fetchBinancePriceViaCorsProxy(sym);
+            if (p2 != null && p2 > 0) mid = p2;
+          }
         }
         // 2. Backend unified price (CoinGecko → CoinPaprika → Binance)
         if (mid <= 0 && API_BASE) {
@@ -1424,13 +1478,17 @@ export default function OmegaDEX() {
         }
       } else if (nonEvmPair) {
         try {
-          // Match chart: try Binance (CORS proxy) first so header/EZ Peeze show same price as chart (e.g. APT ~0.86)
+          // Relayer first (/api or API_BASE), then CORS proxy
           const cgId = nonEvmPair.coingeckoId;
           let priceNum = NaN;
           if (chartPair?.tradingViewSymbol?.startsWith("BINANCE:")) {
             const sym = chartPair.tradingViewSymbol.replace(/^BINANCE:/i, "");
-            const p = await fetchBinancePriceViaCorsProxy(sym);
+            const p = await fetchBinancePriceFromRelayer(sym, API_BASE);
             if (p != null && p > 0) priceNum = p;
+            if (!Number.isFinite(priceNum) || priceNum <= 0) {
+              const p2 = await fetchBinancePriceViaCorsProxy(sym);
+              if (p2 != null && p2 > 0) priceNum = p2;
+            }
           }
           if (cgId) {
             // Then CoinGecko, live Binance, backend Binance, client Binance
@@ -2595,7 +2653,7 @@ export default function OmegaDEX() {
                   )}
                 </div>
                 <div style={{ fontSize: isMobile ? 20 : 24, fontWeight: 700, color: t.glass.green, letterSpacing: "-0.04em" }}>
-                  {nonEvmPair && (nonEvmPriceFailed || orderBook.midPrice === 0) ? "—" : `$${orderBook.midPrice != null && orderBook.midPrice > 0 ? orderBook.midPrice.toFixed(4) : (isZeroXPair ? "0.0000" : "0.0847")}`}
+                  ${getCurrentPriceDisplay(orderBook, nonEvmPair, nonEvmPriceFailed)}
                 </div>
 
                 {!isMobile && !isZeroXPair && (() => {
@@ -3504,7 +3562,7 @@ export default function OmegaDEX() {
                     <div style={{ textAlign: "center" }}>
                       <div style={{ fontSize: 11, color: t.glass.textTertiary, marginBottom: 4, textTransform: "uppercase", letterSpacing: "0.06em" }}>Current Price</div>
                       <div style={{ fontSize: 28, fontWeight: 800, color: "#fff", fontFamily: "'SF Mono', monospace" }}>
-                        {nonEvmPair && (nonEvmPriceFailed || orderBook.midPrice === 0) ? "—" : (orderBook.midPrice != null && orderBook.midPrice > 0 ? orderBook.midPrice.toFixed(4) : (orderBook.midPrice?.toFixed(4) ?? "0.0847"))}
+                        {getCurrentPriceDisplay(orderBook, nonEvmPair, nonEvmPriceFailed)}
                       </div>
                       <div style={{ fontSize: 12, color: t.glass.textTertiary }}>{currentPairInfo.baseToken || "PRE"} / {currentPairInfo.quoteToken || "mUSDC"}</div>
                     </div>
@@ -4335,7 +4393,7 @@ export default function OmegaDEX() {
                           <div style={{ ...t.panelInner, padding: "12px 16px", borderRadius: 16, textAlign: "center" }}>
                             <div style={{ fontSize: 9, color: t.glass.textTertiary, marginBottom: 2, textTransform: "uppercase", letterSpacing: "0.08em" }}>Current Price</div>
                             <div style={{ fontSize: 36, fontWeight: 800, color: "#fff", fontFamily: "'SF Mono', monospace", letterSpacing: "-0.02em" }}>
-                              {nonEvmPair && (nonEvmPriceFailed || orderBook.midPrice === 0) ? "—" : (orderBook.midPrice != null && orderBook.midPrice > 0 ? orderBook.midPrice.toFixed(4) : (orderBook.midPrice?.toFixed(4) ?? "0.0847"))}
+                              {getCurrentPriceDisplay(orderBook, nonEvmPair, nonEvmPriceFailed)}
                             </div>
                             <div style={{ fontSize: 10, color: t.glass.textTertiary }}>{currentPairInfo.baseToken || "PRE"} / {currentPairInfo.quoteToken || "mUSDC"}</div>
                           </div>

@@ -382,14 +382,33 @@ const CG_TO_BINANCE = {
   "usd-coin": "USDCUSDT",
   "tether": "USDTUSDT"
 };
+// Reverse: Binance symbol -> CoinGecko id (for fallback when Binance is geo-blocked)
+const BINANCE_TO_CG = Object.fromEntries(
+  Object.entries(CG_TO_BINANCE).map(([id, sym]) => [sym, id])
+);
 
+const BINANCE_FETCH_MS = 10000;
 async function fetchBinancePrice(symbol) {
   try {
-    const r = await fetch(`https://api.binance.com/api/v3/ticker/price?symbol=${symbol}`);
+    const controller = new AbortController();
+    const to = setTimeout(() => controller.abort(), BINANCE_FETCH_MS);
+    const r = await fetch(`https://api.binance.com/api/v3/ticker/price?symbol=${encodeURIComponent(symbol)}`, {
+      signal: controller.signal,
+      headers: { Accept: "application/json" },
+    });
+    clearTimeout(to);
     if (!r.ok) return null;
     const data = await r.json();
-    return parseFloat(data.price);
-  } catch { return null; }
+    if (data?.msg && String(data.msg).includes("restricted")) {
+      console.warn("[Price] Binance geo-restricted for", symbol);
+      return null;
+    }
+    const price = parseFloat(data?.price);
+    return Number.isFinite(price) && price > 0 ? price : null;
+  } catch (e) {
+    console.warn("[Price] Binance fetch failed for", symbol, e?.message || e);
+    return null;
+  }
 }
 
 // CoinPaprika: no API key, free tier. Good fallback when CoinGecko rate-limits.
@@ -464,12 +483,17 @@ app.get("/api/coingecko-price", async (req, res) => {
   return res.status(502).json({ error: "Price unavailable", id });
 });
 
-// Binance price proxy (no CORS from client; frontend can use when CoinGecko fails)
+// Binance price proxy; when Binance is geo-blocked, fall back to CoinGecko for known symbols
 app.get("/api/binance-price", async (req, res) => {
   const symbol = (req.query.symbol || "").trim().toUpperCase();
   if (!symbol) return res.status(400).json({ error: "Missing symbol" });
   try {
-    const price = await fetchBinancePrice(symbol);
+    let price = await fetchBinancePrice(symbol);
+    if ((price == null || price <= 0) && BINANCE_TO_CG[symbol]) {
+      const cgId = BINANCE_TO_CG[symbol];
+      price = await fetchCoingeckoPrice(cgId);
+      if (price != null && price > 0) return res.json({ price, symbol, source: "coingecko" });
+    }
     if (price != null && price > 0) return res.json({ price, symbol });
   } catch (e) {
     console.warn("[Price] Binance proxy failed for", symbol, e.message);
