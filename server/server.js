@@ -310,6 +310,22 @@ const CG_TO_BINANCE = {
   "floki": "FLOKIUSDT",
   "dogwifhat": "WIFUSDT",
   "worldcoin": "WLDUSDT",
+  "jupiter-exchange-solana": "JUPUSDT",
+  "raydium": "RAYUSDT",
+  "pyth-network": "PYTHUSDT",
+  "pudgy-penguins": "PENGUUSDT",
+  "official-trump": "TRUMPUSDT",
+  "kamino": "KMNOUSDT",
+  "meteora": "METUSDT",
+  "lido-dao": "LDOUSDT",
+  "curve-dao-token": "CRVUSDT",
+  "the-sandbox": "SANDUSDT",
+  "decentraland": "MANAUSDT",
+  "apecoin": "APEUSDT",
+  "blockstack": "STXUSDT",
+  "dai": "DAIUSDT",
+  "usd-coin": "USDCUSDT",
+  "tether": "USDTUSDT"
 };
 
 async function fetchBinancePrice(symbol) {
@@ -377,6 +393,35 @@ app.get("/api/coingecko-price", async (req, res) => {
   }
 
   return res.status(502).json({ error: "Price unavailable", id });
+  return res.status(502).json({ error: "Price unavailable", id });
+});
+
+// Fallback endpoint for non-EVM pairs (e.g. SOL/USDC) if frontend fails
+app.get("/api/non-evm-price", async (req, res) => {
+  const pairId = (req.query.pairId || "").trim();
+  // Map pairId to CoinGecko ID manually if needed, or rely on frontend passing coingeckoId to /api/coingecko-price
+  // However, omega-dex.jsx calls this with pairId.
+  // We need a small mapping here or logic to extract it.
+  // Since omega-dex.jsx usually tries /api/coingecko-price first with the ID, this is a fallback.
+  // Let's try to infer from common known pairs.
+  let cgId = "";
+  if (pairId.includes("SOL")) cgId = "solana";
+  else if (pairId.includes("BTC")) cgId = "bitcoin";
+  else if (pairId.includes("JUP")) cgId = "jupiter-exchange-solana";
+  else if (pairId.includes("RAY")) cgId = "raydium";
+  else if (pairId.includes("BONK")) cgId = "bonk";
+  else if (pairId.includes("WIF")) cgId = "dogwifhat";
+  else if (pairId.includes("PENGU")) cgId = "pudgy-penguins";
+  else if (pairId.includes("TRUMP")) cgId = "official-trump";
+  else if (pairId.includes("KMNO")) cgId = "kamino";
+  else if (pairId.includes("PYTH")) cgId = "pyth-network";
+  else if (pairId.includes("MET")) cgId = "meteora";
+
+  if (!cgId) return res.status(400).json({ error: "Unknown pairId" });
+
+  let price = await fetchCoingeckoPrice(cgId);
+  if (price != null) return res.json({ price, id: cgId });
+  return res.status(502).json({ error: "Price unavailable", pairId });
 });
 
 // Crypto news – Google News RSS search for " ticker crypto" (e.g. "ETH crypto")

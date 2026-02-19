@@ -866,18 +866,21 @@ const BINANCE_MAPPING = {
   "blockstack": "stxusdt", "dai": "daiusdt", "usd-coin": "usdcusdt", "tether": "usdtusdt",
 };
 
+// Helper to resolve Binance symbol (Mapping -> Fallback)
+function getBinanceSymbol(cgId, baseToken) {
+  let symbol = cgId ? BINANCE_MAPPING[cgId] : null;
+  if (!symbol && baseToken && typeof baseToken === "string" && baseToken.length >= 2) {
+    symbol = baseToken.toLowerCase() + "usdt"; // Fallback: JUP -> jupusdt
+  }
+  return symbol;
+}
+
 // Hook that tries mapping first, then falls back to direct SYMBOL+USDT
 function useBinancePrice(cgId, fallbackSymbol) {
   const [price, setPrice] = useState(null);
 
   useEffect(() => {
-    let symbol = cgId ? BINANCE_MAPPING[cgId] : null;
-
-    // Fallback logic
-    if (!symbol && fallbackSymbol && typeof fallbackSymbol === "string" && fallbackSymbol.length >= 2) {
-      symbol = fallbackSymbol.toLowerCase() + "usdt";
-    }
-
+    const symbol = getBinanceSymbol(cgId, fallbackSymbol);
     if (!symbol) { setPrice(null); return; }
 
     const wsUrl = `wss://stream.binance.com:9443/ws/${symbol}@trade`;
@@ -1340,7 +1343,7 @@ export default function OmegaDEX() {
             try {
               // Try client-side REST first for speed if WS isn't ready
               if (!liveBinancePrice) {
-                const sym = BINANCE_MAPPING[cgId];
+                const sym = getBinanceSymbol(cgId, zeroxPair.baseToken);
                 if (sym) {
                   const r = await fetch(`https://api.binance.com/api/v3/ticker/price?symbol=${sym.toUpperCase()}`);
                   if (r.ok) { const d = await r.json(); mid = parseFloat(d.price); }
@@ -1409,7 +1412,7 @@ export default function OmegaDEX() {
             if ((!Number.isFinite(priceNum) || priceNum <= 0) && API_BASE) {
               try {
                 if (!liveBinancePrice) {
-                  const sym = BINANCE_MAPPING[cgId];
+                  const sym = getBinanceSymbol(cgId, nonEvmPair.baseToken);
                   if (sym) {
                     const r = await fetch(`https://api.binance.com/api/v3/ticker/price?symbol=${sym.toUpperCase()}`);
                     if (r.ok) { const d = await r.json(); priceNum = parseFloat(d.price); }
