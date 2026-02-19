@@ -240,7 +240,8 @@ function broadcast(msg) {
 
 // Pairs & token listing
 // 0x Swap API proxy (bypasses CORS; use when frontend gets "Failed to fetch")
-const ZEROX_KEY = process.env.VITE_0X_API_KEY || process.env.ZEROX_API_KEY || "";
+// Trim key so pasted env vars with newlines/spaces don't break 0x API
+const ZEROX_KEY = (process.env.VITE_0X_API_KEY || process.env.ZEROX_API_KEY || "").trim();
 if (!ZEROX_KEY) console.warn("[0x] No API key set (VITE_0X_API_KEY or ZEROX_API_KEY). 0x requests may fail.");
 else console.log("[0x] API key is set.");
 
@@ -281,6 +282,53 @@ app.get("/api/health", (req, res) => {
 // Debug: confirm 0x key is loaded (do not use in production for sensitive data)
 app.get("/api/debug-0x", (req, res) => {
   res.json({ zeroxKeySet: !!ZEROX_KEY, zeroxKeyLength: ZEROX_KEY ? ZEROX_KEY.length : 0 });
+});
+
+// Unified price for zerox pairs: 0x → CoinGecko → CoinPaprika → Binance. One request from frontend.
+const PAIR_TO_COINGECKO = {
+  "ETH/USDC": "ethereum", "ETH/USDT": "ethereum", "LINK/USDC": "chainlink", "UNI/USDC": "uniswap",
+  "AAVE/USDC": "aave", "CRV/USDC": "curve-dao-token", "MATIC/USDC": "matic-network", "ARB/USDC": "arbitrum",
+  "LDO/USDC": "lido-dao", "PEPE/USDC": "pepe", "SHIB/USDC": "shiba-inu", "SAND/USDC": "the-sandbox",
+  "MANA/USDC": "decentraland", "FLOKI/USDC": "floki", "BONK/USDC": "bonk", "WIF/USDC": "dogwifhat",
+  "FET/USDC": "fetch-ai", "DOT/USDC": "polkadot", "MATIC/USDC-POLY": "matic-network", "ETH/USDC-POLY": "ethereum",
+  "ETH/USDC-ARB": "ethereum", "ARB/USDC-ARB": "arbitrum", "ETH/USDC-OP": "ethereum", "OP/USDC-OP": "optimism",
+  "ETH/USDC-BASE": "ethereum", "DEGEN/USDC-BASE": "degen", "BNB/USDT-BSC": "binancecoin", "AVAX/USDC-AVAX": "avalanche-2",
+  "ETH/USDC-AVAX": "ethereum",
+};
+// CoinPaprika: no API key, free tier 20k/mo. IDs from https://api.coinpaprika.com/v1/coins
+const PAIR_TO_COINPAPRIKA = {
+  "ETH/USDC": "eth-ethereum", "ETH/USDT": "eth-ethereum", "LINK/USDC": "link-chainlink", "UNI/USDC": "uni-uniswap",
+  "AAVE/USDC": "aave-aave", "CRV/USDC": "crv-curve-dao-token", "MATIC/USDC": "matic-polygon", "ARB/USDC": "arb-arbitrum",
+  "LDO/USDC": "ldo-lido-dao", "PEPE/USDC": "pepe-pepe", "SHIB/USDC": "shib-shiba-inu", "SAND/USDC": "sand-the-sandbox",
+  "MANA/USDC": "mana-decentraland", "FLOKI/USDC": "floki-floki", "BONK/USDC": "bonk-bonk", "WIF/USDC": "wif-dogwifhat",
+  "FET/USDC": "fet-fetch", "DOT/USDC": "dot-polkadot", "MATIC/USDC-POLY": "matic-polygon", "ETH/USDC-POLY": "eth-ethereum",
+  "ETH/USDC-ARB": "eth-ethereum", "ARB/USDC-ARB": "arb-arbitrum", "ETH/USDC-OP": "eth-ethereum", "OP/USDC-OP": "op-optimism",
+  "ETH/USDC-BASE": "eth-ethereum", "BNB/USDT-BSC": "bnb-binance-coin", "AVAX/USDC-AVAX": "avax-avalanche", "ETH/USDC-AVAX": "eth-ethereum",
+};
+app.get("/api/price", async (req, res) => {
+  const pairId = (req.query.pairId || req.query.pair || "").trim();
+  if (!pairId) return res.status(400).json({ error: "Missing pairId" });
+  let price = null;
+  if (ZEROX_PAIRS[pairId]) {
+    price = await getZeroxMidPrice(pairId);
+    if (price != null) return res.json({ price, source: "0x", pairId });
+  }
+  const cgId = PAIR_TO_COINGECKO[pairId];
+  if (cgId) {
+    price = await fetchCoingeckoPrice(cgId);
+    if (price != null) return res.json({ price, source: "coingecko", pairId });
+    const cpId = PAIR_TO_COINPAPRIKA[pairId];
+    if (cpId) {
+      price = await fetchCoinPaprikaPrice(cpId);
+      if (price != null) return res.json({ price, source: "coinpaprika", pairId });
+    }
+    const sym = CG_TO_BINANCE[cgId];
+    if (sym) {
+      price = await fetchBinancePrice(sym);
+      if (price != null) return res.json({ price, source: "binance", pairId });
+    }
+  }
+  return res.status(502).json({ error: "Price unavailable", pairId });
 });
 
 // ─── Price Fallback (CoinGecko -> Binance -> Hardcoded) ───
@@ -345,6 +393,20 @@ async function fetchBinancePrice(symbol) {
     const data = await r.json();
     return parseFloat(data.price);
   } catch { return null; }
+}
+
+// CoinPaprika: no API key, free tier. Good fallback when CoinGecko rate-limits.
+async function fetchCoinPaprikaPrice(coinId) {
+  try {
+    const r = await fetch(`https://api.coinpaprika.com/v1/tickers/${encodeURIComponent(coinId)}`);
+    if (!r.ok) return null;
+    const data = await r.json();
+    const price = data?.quotes?.USD?.price;
+    return typeof price === "number" && price > 0 ? price : null;
+  } catch (e) {
+    console.warn("[Price] CoinPaprika failed for", coinId, e.message);
+    return null;
+  }
 }
 
 async function fetchCoingeckoPrice(id) {

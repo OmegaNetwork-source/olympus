@@ -875,6 +875,27 @@ function getBinanceSymbol(cgId, baseToken) {
   return symbol;
 }
 
+// Binance via CORS proxy (works when backend is down or Binance blocks direct). Try 2 proxies.
+async function fetchBinancePriceViaCorsProxy(binanceSymbol) {
+  const sym = (binanceSymbol || "").toString().toUpperCase();
+  if (!sym) return null;
+  const url = `https://api.binance.com/api/v3/ticker/price?symbol=${sym}`;
+  const proxies = [
+    (u) => `https://api.allorigins.win/raw?url=${encodeURIComponent(u)}`,
+    (u) => `https://corsproxy.io/?${encodeURIComponent(u)}`,
+  ];
+  for (const toProxyUrl of proxies) {
+    try {
+      const r = await fetch(toProxyUrl(url));
+      if (r.ok) {
+        const d = await r.json().catch(() => ({}));
+        if (d?.price) return parseFloat(d.price);
+      }
+    } catch (_) { }
+  }
+  return null;
+}
+
 // Hook that tries mapping first, then falls back to direct SYMBOL+USDT
 function useBinancePrice(cgId, fallbackSymbol) {
   const [price, setPrice] = useState(null);
@@ -1331,12 +1352,28 @@ export default function OmegaDEX() {
     try {
       setApiError(null);
       if (zeroxPair) {
-        // Default to CoinGecko for display (works in prod without 0x key). 0x is only required for swaps.
-        const cgId = ZEROX_COINGECKO_FALLBACK[zeroxPair.baseToken];
+        // 1. Unified backend price (tries 0x then CoinGecko then Binance server-side; one request)
         let mid = 0;
-        if (cgId) {
-          // 1. Prefer backend CoinGecko first (reliable; no CORS)
-          if (mid <= 0 && API_BASE) {
+        if (API_BASE) {
+          try {
+            const r = await fetch(`${API_BASE}/api/price?pairId=${encodeURIComponent(zeroxPair.id)}`);
+            if (r.ok) {
+              const d = await r.json().catch(() => ({}));
+              const p = d?.price != null ? Number(d.price) : NaN;
+              if (Number.isFinite(p) && p > 0) mid = p;
+            }
+          } catch (_) { }
+        }
+        // Same source as chart: Binance via CORS proxy (works when backend is down)
+        if (mid <= 0 && chartPair?.tradingViewSymbol?.startsWith("BINANCE:")) {
+          const sym = chartPair.tradingViewSymbol.replace(/^BINANCE:/i, "");
+          const p = await fetchBinancePriceViaCorsProxy(sym);
+          if (p != null && p > 0) mid = p;
+        }
+        const cgId = ZEROX_COINGECKO_FALLBACK[zeroxPair.baseToken];
+        if (cgId && mid <= 0) {
+          // 2. Prefer backend CoinGecko (reliable; no CORS)
+          if (API_BASE) {
             try {
               const r = await fetch(`${API_BASE}/api/coingecko-price?id=${encodeURIComponent(cgId)}`);
               const data = r.ok ? await r.json().catch(() => ({})) : {};
@@ -1424,7 +1461,13 @@ export default function OmegaDEX() {
                 if (Number.isFinite(p) && p > 0) priceNum = p;
               } catch (_) { }
             }
-            // 2. Live WebSocket when available
+            // 2. Same as chart: Binance via CORS proxy (works when backend is down)
+            if ((!Number.isFinite(priceNum) || priceNum <= 0) && chartPair?.tradingViewSymbol?.startsWith("BINANCE:")) {
+              const sym = chartPair.tradingViewSymbol.replace(/^BINANCE:/i, "");
+              const p = await fetchBinancePriceViaCorsProxy(sym);
+              if (p != null && p > 0) priceNum = p;
+            }
+            // 3. Live WebSocket when available
             if (liveBinancePrice && liveBinancePrice > 0) priceNum = liveBinancePrice;
             // 3. Backend Binance proxy then client Binance REST
             if (!Number.isFinite(priceNum) || priceNum <= 0) {
