@@ -828,13 +828,46 @@ const ZEROX_PAIRS = [
 
 // When 0x fails, fallback to CoinGecko for display (baseToken -> CoinGecko id)
 const ZEROX_COINGECKO_FALLBACK = {
-  ETH: "ethereum", ARB: "arbitrum", OP: "optimism", MATIC: "matic-network", LINK: "chainlink",
-  UNI: "uniswap", AAVE: "aave", CRV: "curve-dao-token", PEPE: "pepe", SHIB: "shiba-inu",
-  SAND: "the-sandbox", MANA: "decentraland", FLOKI: "floki", BONK: "bonk", WIF: "dogwifhat",
-  FET: "fetch-ai", DOT: "polkadot", LDO: "lido-dao", DEGEN: "degen-base", CAKE: "pancakeswap-token",
-  DOGE: "dogecoin", BNB: "binancecoin",
+  "ETH": "ethereum", "WETH": "ethereum", "WBTC": "bitcoin", "BTC": "bitcoin",
+  "SOL": "solana", "WSOL": "solana", "USDC": "usd-coin", "USDT": "tether",
+  "DAI": "dai", "LINK": "chainlink", "UNI": "uniswap", "AAVE": "aave",
+  "CRV": "curve-dao-token", "MATIC": "matic-network", "ARB": "arbitrum",
+  "OP": "optimism", "LDO": "lido-dao", "PEPE": "pepe", "SHIB": "shiba-inu",
+  "SAND": "the-sandbox", "MANA": "decentraland", "APE": "apecoin",
+  "FLOKI": "floki", "BONK": "bonk", "WIF": "dogwifhat", "FET": "fetch-ai",
+  "RNDR": "render-token", "NEAR": "near", "APT": "aptos", "SUI": "sui",
+  "SEI": "sei-network", "TIA": "celestia", "INJ": "injective-protocol",
+  "FTM": "fantom", "TON": "the-open-network", "BNB": "binancecoin",
+  "DOGE": "dogecoin", "DOT": "polkadot", "AVAX": "avalanche-2",
+  "TRUMP": "official-trump", "PYTH": "pyth-network", "MET": "meteora",
+  "KMNO": "kamino", "STX": "blockstack", "RAY": "raydium", "JUP": "jupiter-exchange-solana",
+  "PENGU": "pudgy-penguins", "DEGEN": "degen-base",
 };
 
+const BINANCE_MAPPING = {
+  "ethereum": "ETHUSDT", "bitcoin": "BTCUSDT", "solana": "SOLUSDT",
+  "ripple": "XRPUSDT", "matic-network": "MATICUSDT", "arbitrum": "ARBUSDT",
+  "optimism": "OPUSDT", "avalanche-2": "AVAXUSDT", "binancecoin": "BNBUSDT",
+  "dogecoin": "DOGEUSDT", "chainlink": "LINKUSDT", "uniswap": "UNIUSDT",
+  "aave": "AAVEUSDT", "cardano": "ADAUSDT", "polkadot": "DOTUSDT",
+  "shiba-inu": "SHIBUSDT", "pepe": "PEPEUSDT", "fetch-ai": "FETUSDT",
+  "render-token": "RNDRUSDT", "near": "NEARUSDT", "aptos": "APTUSDT",
+  "sui": "SUIUSDT", "sei-network": "SEIUSDT", "celestia": "TIAUSDT",
+  "injective-protocol": "INJUSDT", "fantom": "FTMUSDT",
+  "the-open-network": "TONUSDT", "bonk": "BONKUSDT", "floki": "FLOKIUSDT",
+  "dogwifhat": "WIFUSDT", "worldcoin": "WLDUSDT",
+};
+
+async function fetchBinanceClient(cgId) {
+  const symbol = BINANCE_MAPPING[cgId];
+  if (!symbol) return null;
+  try {
+    const r = await fetch(`https://api.binance.com/api/v3/ticker/price?symbol=${symbol}`);
+    if (!r.ok) return null;
+    const d = await r.json();
+    return parseFloat(d.price);
+  } catch { return null; }
+}
 // Non-EVM pairs: Chart + News + Technical + EZ Peeze only (no Swap). coingeckoId used for price via /api/coingecko-price.
 const NON_EVM_PAIRS = [
   { id: "SOL/USDC", baseToken: "SOL", quoteToken: "USDC", tradingViewSymbol: "BINANCE:SOLUSDT", chainLabel: "Solana", coingeckoId: "solana" },
@@ -1241,13 +1274,20 @@ export default function OmegaDEX() {
         // Default to CoinGecko for display (works in prod without 0x key). 0x is only required for swaps.
         const cgId = ZEROX_COINGECKO_FALLBACK[zeroxPair.baseToken];
         let mid = 0;
-        if (cgId && API_BASE) {
-          try {
-            const r = await fetch(`${API_BASE}/api/coingecko-price?id=${encodeURIComponent(cgId)}`);
-            const data = r.ok ? await r.json().catch(() => ({})) : {};
-            const priceNum = data?.price != null ? Number(data.price) : NaN;
-            if (Number.isFinite(priceNum) && priceNum > 0) mid = priceNum;
-          } catch (_) { }
+        if (cgId) {
+          // 1. Try Client-side Binance (Instant)
+          const binancePrice = await fetchBinanceClient(cgId);
+          if (binancePrice) mid = binancePrice;
+
+          // 2. Try Backend (CoinGecko / Fallback)
+          if (mid <= 0 && API_BASE) {
+            try {
+              const r = await fetch(`${API_BASE}/api/coingecko-price?id=${encodeURIComponent(cgId)}`);
+              const data = r.ok ? await r.json().catch(() => ({})) : {};
+              const priceNum = data?.price != null ? Number(data.price) : NaN;
+              if (Number.isFinite(priceNum) && priceNum > 0) mid = priceNum;
+            } catch (_) { }
+          }
         }
         if (mid <= 0) {
           try {
@@ -1294,12 +1334,19 @@ export default function OmegaDEX() {
           // Use /api/coingecko-price first (has cache+retry). Fallback to /api/non-evm-price.
           const cgId = nonEvmPair.coingeckoId;
           let priceNum = NaN;
-          if (cgId && API_BASE) {
-            try {
-              const r = await fetch(`${API_BASE}/api/coingecko-price?id=${encodeURIComponent(cgId)}`);
-              const data = r.ok ? await r.json().catch(() => ({})) : {};
-              priceNum = data?.price != null ? Number(data.price) : NaN;
-            } catch (_) { }
+          if (cgId) {
+            // 1. Try Client-side Binance (Instant)
+            const binancePrice = await fetchBinanceClient(cgId);
+            if (binancePrice) priceNum = binancePrice;
+
+            // 2. Try Backend (CoinGecko / Fallback)
+            if ((!Number.isFinite(priceNum) || priceNum <= 0) && API_BASE) {
+              try {
+                const r = await fetch(`${API_BASE}/api/coingecko-price?id=${encodeURIComponent(cgId)}`);
+                const data = r.ok ? await r.json().catch(() => ({})) : {};
+                priceNum = data?.price != null ? Number(data.price) : NaN;
+              } catch (_) { }
+            }
           }
           if (!Number.isFinite(priceNum) || priceNum < 0) {
             const url = API_BASE ? `${API_BASE}/api/non-evm-price?pairId=${encodeURIComponent(nonEvmPair.id)}` : `/api/non-evm-price?pairId=${encodeURIComponent(nonEvmPair.id)}`;
