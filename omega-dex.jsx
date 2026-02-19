@@ -27,7 +27,7 @@ import {
 import { fetchPredictionMarkets, fetchPredictionEvent } from "./lib/predictionApi.js";
 import { placePolymarketOrder } from "./lib/polymarketOrder.js";
 import {
-  getPrice, getQuote, getQuoteForBuyAmount,
+  getQuote, getQuoteForBuyAmount,
   ETH_NATIVE, USDC_ETH, USDT_ETH, DAI_ETH, WBTC_ETH, LINK_ETH, UNI_ETH, AAVE_ETH, CRV_ETH, MKR_ETH,
   MATIC_ETH, ARB_ETH, OP_ETH, SNX_ETH, LDO_ETH, PEPE_ETH, SHIB_ETH, SAND_ETH, MANA_ETH,
   FLOKI_ETH, BONK_ETH, WIF_ETH, RENDER_ETH, FET_ETH, DOT_ETH, APT_ETH,
@@ -1352,9 +1352,15 @@ export default function OmegaDEX() {
     try {
       setApiError(null);
       if (zeroxPair) {
-        // 1. Unified backend price (tries 0x then CoinGecko then Binance server-side; one request)
         let mid = 0;
-        if (API_BASE) {
+        // 1. Same source as chart: Binance via CORS proxy first (works locally without API and in prod when backend is down)
+        if (chartPair?.tradingViewSymbol?.startsWith("BINANCE:")) {
+          const sym = chartPair.tradingViewSymbol.replace(/^BINANCE:/i, "");
+          const p = await fetchBinancePriceViaCorsProxy(sym);
+          if (p != null && p > 0) mid = p;
+        }
+        // 2. Backend unified price (CoinGecko → CoinPaprika → Binance)
+        if (mid <= 0 && API_BASE) {
           try {
             const r = await fetch(`${API_BASE}/api/price?pairId=${encodeURIComponent(zeroxPair.id)}`);
             if (r.ok) {
@@ -1363,12 +1369,6 @@ export default function OmegaDEX() {
               if (Number.isFinite(p) && p > 0) mid = p;
             }
           } catch (_) { }
-        }
-        // Same source as chart: Binance via CORS proxy (works when backend is down)
-        if (mid <= 0 && chartPair?.tradingViewSymbol?.startsWith("BINANCE:")) {
-          const sym = chartPair.tradingViewSymbol.replace(/^BINANCE:/i, "");
-          const p = await fetchBinancePriceViaCorsProxy(sym);
-          if (p != null && p > 0) mid = p;
         }
         const cgId = ZEROX_COINGECKO_FALLBACK[zeroxPair.baseToken];
         if (cgId && mid <= 0) {
@@ -1406,31 +1406,7 @@ export default function OmegaDEX() {
             }
           }
         }
-        if (mid <= 0) {
-          try {
-            const taker = wallet.address || "0x0000000000000000000000000000000000000000";
-            const sellAmt = "1000000000000000000";
-            const p = await getPrice({
-              chainId: zeroxPair.chainId,
-              sellToken: zeroxPair.baseAddress,
-              buyToken: zeroxPair.quoteAddress,
-              sellAmount: sellAmt,
-              taker,
-            });
-            const quoteDecimals = zeroxPair.quoteDecimals ?? 6;
-            mid = parseFloat(ethers.formatUnits(p.buyAmount || "0", quoteDecimals));
-          } catch (zeroxErr) {
-            if (cgId && API_BASE) {
-              try {
-                const r = await fetch(`${API_BASE}/api/coingecko-price?id=${encodeURIComponent(cgId)}`);
-                const data = r.ok ? await r.json().catch(() => ({})) : {};
-                const priceNum = data?.price != null ? Number(data.price) : NaN;
-                if (Number.isFinite(priceNum) && priceNum > 0) mid = priceNum;
-              } catch (_) { }
-            }
-            if (mid <= 0) throw zeroxErr;
-          }
-        }
+        // 0x is not used for price display — only for swaps (getQuote). Price = CoinGecko / Binance / CORS proxy only.
         if (mid > 0) {
           const spread = mid * 0.0005;
           setOrderBook({
@@ -1444,16 +1420,21 @@ export default function OmegaDEX() {
             asks: [{ price: mid + spread, amount: 100, cumulative: 100 }],
           });
         } else {
-          throw new Error("Price unavailable (CoinGecko and 0x failed)");
+          throw new Error("Price temporarily unavailable");
         }
       } else if (nonEvmPair) {
         try {
-          // Use /api/coingecko-price first (has cache+retry). Fallback to /api/non-evm-price.
+          // Match chart: try Binance (CORS proxy) first so header/EZ Peeze show same price as chart (e.g. APT ~0.86)
           const cgId = nonEvmPair.coingeckoId;
           let priceNum = NaN;
+          if (chartPair?.tradingViewSymbol?.startsWith("BINANCE:")) {
+            const sym = chartPair.tradingViewSymbol.replace(/^BINANCE:/i, "");
+            const p = await fetchBinancePriceViaCorsProxy(sym);
+            if (p != null && p > 0) priceNum = p;
+          }
           if (cgId) {
-            // 1. Backend CoinGecko first (reliable; no CORS)
-            if (API_BASE) {
+            // Then CoinGecko, live Binance, backend Binance, client Binance
+            if ((!Number.isFinite(priceNum) || priceNum <= 0) && API_BASE) {
               try {
                 const r = await fetch(`${API_BASE}/api/coingecko-price?id=${encodeURIComponent(cgId)}`);
                 const data = r.ok ? await r.json().catch(() => ({})) : {};
@@ -1461,15 +1442,7 @@ export default function OmegaDEX() {
                 if (Number.isFinite(p) && p > 0) priceNum = p;
               } catch (_) { }
             }
-            // 2. Same as chart: Binance via CORS proxy (works when backend is down)
-            if ((!Number.isFinite(priceNum) || priceNum <= 0) && chartPair?.tradingViewSymbol?.startsWith("BINANCE:")) {
-              const sym = chartPair.tradingViewSymbol.replace(/^BINANCE:/i, "");
-              const p = await fetchBinancePriceViaCorsProxy(sym);
-              if (p != null && p > 0) priceNum = p;
-            }
-            // 3. Live WebSocket when available
             if (liveBinancePrice && liveBinancePrice > 0) priceNum = liveBinancePrice;
-            // 3. Backend Binance proxy then client Binance REST
             if (!Number.isFinite(priceNum) || priceNum <= 0) {
               const sym = getBinanceSymbol(cgId, nonEvmPair.baseToken);
               if (sym && API_BASE) {
@@ -1513,9 +1486,12 @@ export default function OmegaDEX() {
               bids: [{ price: mid - spread, amount: 100, cumulative: 100 }],
               asks: [{ price: mid + spread, amount: 100, cumulative: 100 }],
             });
+          } else {
+            setOrderBook({ asks: [], bids: [], midPrice: 0 });
           }
         } catch (_) {
           setNonEvmPriceFailed(true);
+          setOrderBook({ asks: [], bids: [], midPrice: 0 });
         }
       } else {
         const [ob, tr, dp] = await Promise.all([
@@ -1528,7 +1504,7 @@ export default function OmegaDEX() {
         setDepthData(dp || { bids: [], asks: [] });
       }
     } catch (e) {
-      setApiError(e.message || "API unavailable");
+      setApiError(e.message || "Price temporarily unavailable");
       if (zeroxPair) {
         setOrderBook({ asks: [], bids: [], midPrice: 0 });
         setDepthData({ bids: [], asks: [] });
@@ -1547,6 +1523,11 @@ export default function OmegaDEX() {
       loadDataTimerRef.current = null;
     }, 150);
   }, [loadData]);
+
+  // When switching to a chart pair (zerox/nonEvm), clear stale price so we never show previous pair's value (e.g. PRE 0.13 as APT)
+  useEffect(() => {
+    if (chartPair) setOrderBook((prev) => (prev.midPrice ? { ...prev, midPrice: 0 } : prev));
+  }, [selectedPair, chartPair]);
 
   useEffect(() => {
     loadData();
@@ -2428,13 +2409,7 @@ export default function OmegaDEX() {
               background: "rgba(255,69,58,0.15)", border: "1px solid rgba(255,69,58,0.4)",
               color: t.glass.red, fontSize: 12, fontWeight: 500,
             }}>
-              {isZeroXPair ? (
-                API_BASE
-                  ? <>Price feed temporarily unavailable (0x and fallback). Chart data is still live — retrying automatically…</>
-                  : <>0x API: {apiError}. Run <code style={{ background: "rgba(212,175,55,0.2)", padding: "2px 6px", borderRadius: 4 }}>npm run dev:api</code> (or <code style={{ background: "rgba(212,175,55,0.2)", padding: "2px 6px", borderRadius: 4 }}>npm run dev:all</code>) so the proxy can reach 0x. Ensure <code style={{ background: "rgba(212,175,55,0.2)", padding: "2px 6px", borderRadius: 4 }}>VITE_0X_API_KEY</code> is in .env.</>
-              ) : (
-                <>{apiError} — Run <code style={{ background: "rgba(212,175,55,0.2)", padding: "2px 6px", borderRadius: 4 }}>npm run dev:api</code> in a separate terminal, or <code style={{ background: "rgba(212,175,55,0.2)", padding: "2px 6px", borderRadius: 4 }}>npm run dev:all</code> to start both.</>
-              )}
+              {apiError}. Chart data is still live — retrying automatically…
             </div>
           )}
 

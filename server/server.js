@@ -305,14 +305,11 @@ const PAIR_TO_COINPAPRIKA = {
   "ETH/USDC-ARB": "eth-ethereum", "ARB/USDC-ARB": "arb-arbitrum", "ETH/USDC-OP": "eth-ethereum", "OP/USDC-OP": "op-optimism",
   "ETH/USDC-BASE": "eth-ethereum", "BNB/USDT-BSC": "bnb-binance-coin", "AVAX/USDC-AVAX": "avax-avalanche", "ETH/USDC-AVAX": "eth-ethereum",
 };
+// Price for display only. 0x is NOT used here (only for swaps). Order: CoinGecko → CoinPaprika → Binance.
 app.get("/api/price", async (req, res) => {
   const pairId = (req.query.pairId || req.query.pair || "").trim();
   if (!pairId) return res.status(400).json({ error: "Missing pairId" });
   let price = null;
-  if (ZEROX_PAIRS[pairId]) {
-    price = await getZeroxMidPrice(pairId);
-    if (price != null) return res.json({ price, source: "0x", pairId });
-  }
   const cgId = PAIR_TO_COINGECKO[pairId];
   if (cgId) {
     price = await fetchCoingeckoPrice(cgId);
