@@ -1335,26 +1335,24 @@ export default function OmegaDEX() {
         const cgId = ZEROX_COINGECKO_FALLBACK[zeroxPair.baseToken];
         let mid = 0;
         if (cgId) {
-          // 1. Live WebSocket Price (Instant)
-          if (liveBinancePrice) mid = liveBinancePrice;
-
-          // 2. Fallback to REST (if WS hasn't connected or failed)
+          // 1. Prefer backend CoinGecko first (reliable; no CORS)
           if (mid <= 0 && API_BASE) {
             try {
-              // Try client-side REST first for speed if WS isn't ready
-              if (!liveBinancePrice) {
-                const sym = getBinanceSymbol(cgId, zeroxPair.baseToken);
-                if (sym) {
-                  const r = await fetch(`https://api.binance.com/api/v3/ticker/price?symbol=${sym.toUpperCase()}`);
-                  if (r.ok) { const d = await r.json(); mid = parseFloat(d.price); }
-                }
-              }
-
-              if (mid <= 0) {
-                const r = await fetch(`${API_BASE}/api/coingecko-price?id=${encodeURIComponent(cgId)}`);
-                const data = r.ok ? await r.json().catch(() => ({})) : {};
-                const priceNum = data?.price != null ? Number(data.price) : NaN;
-                if (Number.isFinite(priceNum) && priceNum > 0) mid = priceNum;
+              const r = await fetch(`${API_BASE}/api/coingecko-price?id=${encodeURIComponent(cgId)}`);
+              const data = r.ok ? await r.json().catch(() => ({})) : {};
+              const priceNum = data?.price != null ? Number(data.price) : NaN;
+              if (Number.isFinite(priceNum) && priceNum > 0) mid = priceNum;
+            } catch (_) { }
+          }
+          // 2. Live WebSocket price when available
+          if (liveBinancePrice && liveBinancePrice > 0) mid = liveBinancePrice;
+          // 3. Binance REST in its own try/catch (browser CORS may block; must not skip CoinGecko)
+          if (mid <= 0) {
+            try {
+              const sym = getBinanceSymbol(cgId, zeroxPair.baseToken);
+              if (sym) {
+                const r = await fetch(`https://api.binance.com/api/v3/ticker/price?symbol=${sym.toUpperCase()}`);
+                if (r.ok) { const d = await r.json(); mid = parseFloat(d.price); }
               }
             } catch (_) { }
           }
@@ -1405,23 +1403,24 @@ export default function OmegaDEX() {
           const cgId = nonEvmPair.coingeckoId;
           let priceNum = NaN;
           if (cgId) {
-            // 1. Live WebSocket Price (Instant)
-            if (liveBinancePrice) priceNum = liveBinancePrice;
-
-            // 2. Fallback
-            if ((!Number.isFinite(priceNum) || priceNum <= 0) && API_BASE) {
+            // 1. Backend CoinGecko first (reliable; no CORS)
+            if (API_BASE) {
               try {
-                if (!liveBinancePrice) {
-                  const sym = getBinanceSymbol(cgId, nonEvmPair.baseToken);
-                  if (sym) {
-                    const r = await fetch(`https://api.binance.com/api/v3/ticker/price?symbol=${sym.toUpperCase()}`);
-                    if (r.ok) { const d = await r.json(); priceNum = parseFloat(d.price); }
-                  }
-                }
-                if (!Number.isFinite(priceNum) || priceNum <= 0) {
-                  const r = await fetch(`${API_BASE}/api/coingecko-price?id=${encodeURIComponent(cgId)}`);
-                  const data = r.ok ? await r.json().catch(() => ({})) : {};
-                  priceNum = data?.price != null ? Number(data.price) : NaN;
+                const r = await fetch(`${API_BASE}/api/coingecko-price?id=${encodeURIComponent(cgId)}`);
+                const data = r.ok ? await r.json().catch(() => ({})) : {};
+                const p = data?.price != null ? Number(data.price) : NaN;
+                if (Number.isFinite(p) && p > 0) priceNum = p;
+              } catch (_) { }
+            }
+            // 2. Live WebSocket when available
+            if (liveBinancePrice && liveBinancePrice > 0) priceNum = liveBinancePrice;
+            // 3. Binance REST in its own try/catch (CORS may block)
+            if (!Number.isFinite(priceNum) || priceNum <= 0) {
+              try {
+                const sym = getBinanceSymbol(cgId, nonEvmPair.baseToken);
+                if (sym) {
+                  const r = await fetch(`https://api.binance.com/api/v3/ticker/price?symbol=${sym.toUpperCase()}`);
+                  if (r.ok) { const d = await r.json(); priceNum = parseFloat(d.price); }
                 }
               } catch (_) { }
             }
@@ -1470,7 +1469,7 @@ export default function OmegaDEX() {
         setNonEvmPriceFailed(true);
       }
     }
-  }, [selectedPair, zeroxPair, nonEvmPair, wallet.address]);
+  }, [selectedPair, zeroxPair, nonEvmPair, wallet.address, liveBinancePrice, API_BASE]);
 
   // Debounced version to avoid flooding API on rapid WS messages
   const loadDataTimerRef = useRef(null);
