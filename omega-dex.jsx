@@ -849,7 +849,7 @@ const ZEROX_COINGECKO_FALLBACK = {
 const BINANCE_MAPPING = {
   "ethereum": "ethusdt", "bitcoin": "btcusdt", "solana": "solusdt",
   "ripple": "xrpusdt", "matic-network": "maticusdt", "arbitrum": "arbusdt",
-  "optimism": "opusdt", "avalanche-2": "axaxusdt", "binancecoin": "bnbusdt",
+  "optimism": "opusdt", "avalanche-2": "avaxusdt", "binancecoin": "bnbusdt",
   "dogecoin": "dogeusdt", "chainlink": "linkusdt", "uniswap": "uniusdt",
   "aave": "aaveusdt", "cardano": "adausdt", "polkadot": "dotusdt",
   "shiba-inu": "shibusdt", "pepe": "pepeusdt", "fetch-ai": "fetusdt",
@@ -858,6 +858,12 @@ const BINANCE_MAPPING = {
   "injective-protocol": "injusdt", "fantom": "ftmusdt",
   "the-open-network": "tonusdt", "bonk": "bonkusdt", "floki": "flokiusdt",
   "dogwifhat": "wifusdt", "worldcoin": "wldusdt",
+  "jupiter-exchange-solana": "jupusdt", "raydium": "rayusdt",
+  "pyth-network": "pythusdt", "pudgy-penguins": "penguusdt",
+  "official-trump": "trumpusdt", "kamino": "kmnousdt",
+  "meteora": "metusdt", "lid-dao": "ldousdt", "curve-dao-token": "crvusdt",
+  "the-sandbox": "sandusdt", "decentraland": "manausdt", "apecoin": "apeusdt",
+  "blockstack": "stxusdt", "dai": "daiusdt", "usd-coin": "usdcusdt", "tether": "usdtusdt",
 };
 
 function useBinancePrice(cgId) {
