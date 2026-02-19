@@ -9,6 +9,7 @@ Production needs the **frontend** to reach your **backend** (Render). Price disp
 | What you need | Why |
 |---------------|-----|
 | **Vercel: `VITE_API_URL`** = your Render URL | Frontend must call your API for prices (CoinGecko), news, and swaps. Without it, requests go to Vercel and get 404. |
+| **Workaround if price still $0.0000** | Open the site once with `?api=https://YOUR-RENDER-URL.onrender.com` (e.g. `olympus.omeganetwork.co?api=https://olympus-api-n3xm.onrender.com`). The app saves it to localStorage so prices load from then on. |
 | **Render: backend running** | Serves `/api/coingecko-price`, `/api/crypto-news`, `/api/zerox/*`. No API key needed for CoinGecko (free). |
 | **Render: `ZEROX_API_KEY`** (optional for display) | Only needed when a user **executes a swap**. Header + EZ Peeze price use CoinGecko first. |
 

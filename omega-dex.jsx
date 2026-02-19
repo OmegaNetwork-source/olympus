@@ -1208,7 +1208,27 @@ export default function OmegaDEX() {
     });
   }, []);
 
-  const API_BASE = (import.meta.env.VITE_API_URL || import.meta.env.VITE_API_BASE || "").replace(/\/$/, "");
+  // API base: env (build-time) or ?api=... or localStorage omega-api-url (so prod works even if VITE_API_URL wasn't set)
+  const API_BASE = useMemo(() => {
+    const env = (import.meta.env.VITE_API_URL || import.meta.env.VITE_API_BASE || "").trim();
+    if (env) return env.replace(/\/$/, "");
+    if (typeof window === "undefined") return "";
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const q = params.get("api");
+      if (q && (q.startsWith("http://") || q.startsWith("https://"))) {
+        const url = q.replace(/\/$/, "");
+        try {
+          localStorage.setItem("omega-api-url", url);
+        } catch (_) {}
+        return url;
+      }
+      const stored = localStorage.getItem("omega-api-url");
+      if (stored && (stored.startsWith("http://") || stored.startsWith("https://"))) return stored.replace(/\/$/, "");
+    } catch (_) {}
+    return "";
+  }, []);
+
   const loadData = useCallback(async () => {
     try {
       setApiError(null);
