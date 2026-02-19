@@ -835,30 +835,29 @@ const ZEROX_COINGECKO_FALLBACK = {
   DOGE: "dogecoin", BNB: "binancecoin",
 };
 
-// Non-EVM pairs: Chart + News + Technical + EZ Peeze only (no Swap)
+// Non-EVM pairs: Chart + News + Technical + EZ Peeze only (no Swap). coingeckoId used for price via /api/coingecko-price.
 const NON_EVM_PAIRS = [
-  { id: "SOL/USDC", baseToken: "SOL", quoteToken: "USDC", tradingViewSymbol: "BINANCE:SOLUSDT", chainLabel: "Solana" },
-  // Popular Solana tokens
-  { id: "BONK/USDC-SOL", baseToken: "BONK", quoteToken: "USDC", tradingViewSymbol: "BINANCE:BONKUSDT", chainLabel: "Solana" },
-  { id: "JUP/USDC-SOL", baseToken: "JUP", quoteToken: "USDC", tradingViewSymbol: "BINANCE:JUPUSDT", chainLabel: "Solana" },
-  { id: "RAY/USDC-SOL", baseToken: "RAY", quoteToken: "USDC", tradingViewSymbol: "BINANCE:RAYUSDT", chainLabel: "Solana" },
-  { id: "PENGU/USDC-SOL", baseToken: "PENGU", quoteToken: "USDC", tradingViewSymbol: "BINANCE:PENGUUSDT", chainLabel: "Solana" },
-  { id: "TRUMP/USDC-SOL", baseToken: "TRUMP", quoteToken: "USDC", tradingViewSymbol: "BINANCE:TRUMPUSDT", chainLabel: "Solana" },
-  { id: "PYTH/USDC-SOL", baseToken: "PYTH", quoteToken: "USDC", tradingViewSymbol: "BINANCE:PYTHUSDT", chainLabel: "Solana" },
-  { id: "MET/USDC-SOL", baseToken: "MET", quoteToken: "USDC", tradingViewSymbol: "BINANCE:METUSDT", chainLabel: "Solana" },
-  { id: "KMNO/USDC-SOL", baseToken: "KMNO", quoteToken: "USDC", tradingViewSymbol: "BINANCE:KMNOUSDT", chainLabel: "Solana" },
-  { id: "BTC/USDC", baseToken: "BTC", quoteToken: "USDC", tradingViewSymbol: "BINANCE:BTCUSDT", chainLabel: "Bitcoin" },
-  { id: "ADA/USDC", baseToken: "ADA", quoteToken: "USDC", tradingViewSymbol: "BINANCE:ADAUSDT", chainLabel: "Cardano" },
-  { id: "XRP/USDC", baseToken: "XRP", quoteToken: "USDC", tradingViewSymbol: "BINANCE:XRPUSDT", chainLabel: "XRP Ledger" },
-  { id: "DOGE/USDC", baseToken: "DOGE", quoteToken: "USDC", tradingViewSymbol: "BINANCE:DOGEUSDT", chainLabel: "Dogecoin" },
-  { id: "SUI/USDC", baseToken: "SUI", quoteToken: "USDC", tradingViewSymbol: "BINANCE:SUIUSDT", chainLabel: "Sui" },
-  { id: "TON/USDC", baseToken: "TON", quoteToken: "USDC", tradingViewSymbol: "BINANCE:TONUSDT", chainLabel: "Ton" },
-  { id: "AVAX/USDC", baseToken: "AVAX", quoteToken: "USDC", tradingViewSymbol: "BINANCE:AVAXUSDT", chainLabel: "Avalanche" },
-  { id: "NEAR/USDC", baseToken: "NEAR", quoteToken: "USDC", tradingViewSymbol: "BINANCE:NEARUSDT", chainLabel: "NEAR" },
-  { id: "INJ/USDC", baseToken: "INJ", quoteToken: "USDC", tradingViewSymbol: "BINANCE:INJUSDT", chainLabel: "Injective" },
-  { id: "TIA/USDC", baseToken: "TIA", quoteToken: "USDC", tradingViewSymbol: "BINANCE:TIAUSDT", chainLabel: "Celestia" },
-  { id: "SEI/USDC", baseToken: "SEI", quoteToken: "USDC", tradingViewSymbol: "BINANCE:SEIUSDT", chainLabel: "Sei" },
-  { id: "STX/USDC", baseToken: "STX", quoteToken: "USDC", tradingViewSymbol: "BINANCE:STXUSDT", chainLabel: "Stacks" },
+  { id: "SOL/USDC", baseToken: "SOL", quoteToken: "USDC", tradingViewSymbol: "BINANCE:SOLUSDT", chainLabel: "Solana", coingeckoId: "solana" },
+  { id: "BONK/USDC-SOL", baseToken: "BONK", quoteToken: "USDC", tradingViewSymbol: "BINANCE:BONKUSDT", chainLabel: "Solana", coingeckoId: "bonk" },
+  { id: "JUP/USDC-SOL", baseToken: "JUP", quoteToken: "USDC", tradingViewSymbol: "BINANCE:JUPUSDT", chainLabel: "Solana", coingeckoId: "jupiter-exchange-solana" },
+  { id: "RAY/USDC-SOL", baseToken: "RAY", quoteToken: "USDC", tradingViewSymbol: "BINANCE:RAYUSDT", chainLabel: "Solana", coingeckoId: "raydium" },
+  { id: "PENGU/USDC-SOL", baseToken: "PENGU", quoteToken: "USDC", tradingViewSymbol: "BINANCE:PENGUUSDT", chainLabel: "Solana", coingeckoId: "pudgy-penguins" },
+  { id: "TRUMP/USDC-SOL", baseToken: "TRUMP", quoteToken: "USDC", tradingViewSymbol: "BINANCE:TRUMPUSDT", chainLabel: "Solana", coingeckoId: "official-trump" },
+  { id: "PYTH/USDC-SOL", baseToken: "PYTH", quoteToken: "USDC", tradingViewSymbol: "BINANCE:PYTHUSDT", chainLabel: "Solana", coingeckoId: "pyth-network" },
+  { id: "MET/USDC-SOL", baseToken: "MET", quoteToken: "USDC", tradingViewSymbol: "BINANCE:METUSDT", chainLabel: "Solana", coingeckoId: "meteora" },
+  { id: "KMNO/USDC-SOL", baseToken: "KMNO", quoteToken: "USDC", tradingViewSymbol: "BINANCE:KMNOUSDT", chainLabel: "Solana", coingeckoId: "kamino" },
+  { id: "BTC/USDC", baseToken: "BTC", quoteToken: "USDC", tradingViewSymbol: "BINANCE:BTCUSDT", chainLabel: "Bitcoin", coingeckoId: "bitcoin" },
+  { id: "ADA/USDC", baseToken: "ADA", quoteToken: "USDC", tradingViewSymbol: "BINANCE:ADAUSDT", chainLabel: "Cardano", coingeckoId: "cardano" },
+  { id: "XRP/USDC", baseToken: "XRP", quoteToken: "USDC", tradingViewSymbol: "BINANCE:XRPUSDT", chainLabel: "XRP Ledger", coingeckoId: "ripple" },
+  { id: "DOGE/USDC", baseToken: "DOGE", quoteToken: "USDC", tradingViewSymbol: "BINANCE:DOGEUSDT", chainLabel: "Dogecoin", coingeckoId: "dogecoin" },
+  { id: "SUI/USDC", baseToken: "SUI", quoteToken: "USDC", tradingViewSymbol: "BINANCE:SUIUSDT", chainLabel: "Sui", coingeckoId: "sui" },
+  { id: "TON/USDC", baseToken: "TON", quoteToken: "USDC", tradingViewSymbol: "BINANCE:TONUSDT", chainLabel: "Ton", coingeckoId: "the-open-network" },
+  { id: "AVAX/USDC", baseToken: "AVAX", quoteToken: "USDC", tradingViewSymbol: "BINANCE:AVAXUSDT", chainLabel: "Avalanche", coingeckoId: "avalanche-2" },
+  { id: "NEAR/USDC", baseToken: "NEAR", quoteToken: "USDC", tradingViewSymbol: "BINANCE:NEARUSDT", chainLabel: "NEAR", coingeckoId: "near" },
+  { id: "INJ/USDC", baseToken: "INJ", quoteToken: "USDC", tradingViewSymbol: "BINANCE:INJUSDT", chainLabel: "Injective", coingeckoId: "injective-protocol" },
+  { id: "TIA/USDC", baseToken: "TIA", quoteToken: "USDC", tradingViewSymbol: "BINANCE:TIAUSDT", chainLabel: "Celestia", coingeckoId: "celestia" },
+  { id: "SEI/USDC", baseToken: "SEI", quoteToken: "USDC", tradingViewSymbol: "BINANCE:SEIUSDT", chainLabel: "Sei", coingeckoId: "sei-network" },
+  { id: "STX/USDC", baseToken: "STX", quoteToken: "USDC", tradingViewSymbol: "BINANCE:STXUSDT", chainLabel: "Stacks", coingeckoId: "blockstack" },
   { id: "APT/USDC", baseToken: "APT", quoteToken: "USDC", tradingViewSymbol: "BINANCE:APTUSDT", chainLabel: "Aptos", coingeckoId: "aptos" },
 ];
 
@@ -1267,10 +1266,22 @@ export default function OmegaDEX() {
         }
       } else if (nonEvmPair) {
         try {
-          const url = API_BASE ? `${API_BASE}/api/non-evm-price?pairId=${encodeURIComponent(nonEvmPair.id)}` : `/api/non-evm-price?pairId=${encodeURIComponent(nonEvmPair.id)}`;
-          const r = await fetch(url);
-          const data = r.ok ? await r.json().catch(() => ({})) : {};
-          const priceNum = data?.price != null ? Number(data.price) : NaN;
+          // Use /api/coingecko-price first (has cache+retry). Fallback to /api/non-evm-price.
+          const cgId = nonEvmPair.coingeckoId;
+          let priceNum = NaN;
+          if (cgId && API_BASE) {
+            try {
+              const r = await fetch(`${API_BASE}/api/coingecko-price?id=${encodeURIComponent(cgId)}`);
+              const data = r.ok ? await r.json().catch(() => ({})) : {};
+              priceNum = data?.price != null ? Number(data.price) : NaN;
+            } catch (_) {}
+          }
+          if (!Number.isFinite(priceNum) || priceNum < 0) {
+            const url = API_BASE ? `${API_BASE}/api/non-evm-price?pairId=${encodeURIComponent(nonEvmPair.id)}` : `/api/non-evm-price?pairId=${encodeURIComponent(nonEvmPair.id)}`;
+            const r = await fetch(url);
+            const data = r.ok ? await r.json().catch(() => ({})) : {};
+            priceNum = data?.price != null ? Number(data.price) : NaN;
+          }
           const valid = Number.isFinite(priceNum) && priceNum >= 0;
           setNonEvmPriceFailed(!valid);
           if (valid) {
