@@ -1519,7 +1519,7 @@ export default function OmegaDEX() {
     }
   }, [selectedPair, zeroxPair, nonEvmPair]);
 
-  // Header price + 24h stats: try price endpoint first so we show price ASAP, then market for 24h stats
+  // Header price + 24h stats: when user selects a symbol (zerox or nonEvm), call market API and show price + vol/high/low
   useEffect(() => {
     const pair = zeroxPair || nonEvmPair;
     if (!pair) return;
@@ -1528,10 +1528,15 @@ export default function OmegaDEX() {
     let cancelled = false;
     setApiError(null);
     (async () => {
-      // 1) Try simple price first (fewer rate limits) so we show price immediately
-      let p = await fetchPriceFromBackend(cgId);
+      let market = await fetchMarketFromBackend(cgId);
       if (cancelled) return;
-      if (Number.isFinite(p) && p > 0) {
+      if (!market?.price) {
+        const p = await fetchPriceFromBackend(cgId);
+        if (cancelled) return;
+        market = p != null && p > 0 ? { price: p, volume24h: null, high24h: null, low24h: null, changePercent24h: null } : null;
+      }
+      if (market?.price) {
+        const p = market.price;
         const spread = p * 0.0005;
         setOrderBook({
           midPrice: p,
@@ -1542,25 +1547,6 @@ export default function OmegaDEX() {
         setDepthData({
           bids: [{ price: p - spread, amount: 100, cumulative: 100 }],
           asks: [{ price: p + spread, amount: 100, cumulative: 100 }],
-        });
-        setNonEvmPriceFailed(false);
-        setMarketStats({ volume24h: null, high24h: null, low24h: null, changePercent24h: null, marketCap: null, marketCapRank: null, ath: null, athChangePercent: null, athDate: null, atl: null, atlChangePercent: null, atlDate: null, circulatingSupply: null, totalSupply: null, maxSupply: null, fullyDilutedValuation: null, lastUpdated: null });
-      }
-      // 2) Then get full market data (24h stats, ATH, etc.) and merge
-      let market = await fetchMarketFromBackend(cgId);
-      if (cancelled) return;
-      if (!market?.price && Number.isFinite(p) && p > 0) market = { price: p, volume24h: null, high24h: null, low24h: null, changePercent24h: null };
-      if (market?.price) {
-        const price = market.price;
-        const spread = price * 0.0005;
-        setOrderBook({
-          midPrice: price,
-          asks: [{ price: price + spread, amount: 100, total: 100 * (price + spread) }],
-          bids: [{ price: price - spread, amount: 100, total: 100 * (price - spread) }],
-        });
-        setDepthData({
-          bids: [{ price: price - spread, amount: 100, cumulative: 100 }],
-          asks: [{ price: price + spread, amount: 100, cumulative: 100 }],
         });
         setNonEvmPriceFailed(false);
         setMarketStats({
@@ -1582,7 +1568,7 @@ export default function OmegaDEX() {
           fullyDilutedValuation: market.fullyDilutedValuation ?? null,
           lastUpdated: market.lastUpdated ?? null,
         });
-      } else if (!(Number.isFinite(p) && p > 0)) {
+      } else {
         setApiError("Price temporarily unavailable");
         setNonEvmPriceFailed(!!nonEvmPair);
         setMarketStats(null);
@@ -1621,7 +1607,6 @@ export default function OmegaDEX() {
         });
         setApiError(null);
         setNonEvmPriceFailed(false);
-        setMarketStats((prev) => prev || { volume24h: null, high24h: null, low24h: null, changePercent24h: null, marketCap: null, ath: null, atl: null, circulatingSupply: null });
       }
     }, 4000);
     priceFeedRetryRef.current.timer = t;
@@ -2816,64 +2801,34 @@ export default function OmegaDEX() {
                             const fmtUsd = (v) => v == null || !Number.isFinite(v) ? "—" : v >= 1e9 ? `$${(v / 1e9).toFixed(2)}B` : v >= 1e6 ? `$${(v / 1e6).toFixed(1)}M` : v >= 1e3 ? `$${(v / 1e3).toFixed(0)}K` : `$${Number(v).toFixed(2)}`;
                             const fmtNum = (v) => v == null || !Number.isFinite(v) ? "—" : v >= 1e9 ? `${(v / 1e9).toFixed(2)}B` : v >= 1e6 ? `${(v / 1e6).toFixed(1)}M` : v >= 1e3 ? `${(v / 1e3).toFixed(0)}K` : Number(v).toLocaleString();
                             const fmtPct = (v) => v == null || !Number.isFinite(v) ? "—" : `${(v >= 0 ? "+" : "") + Number(v).toFixed(2)}%`;
-                            const fmtPrice = (v) => v == null || !Number.isFinite(v) ? "—" : formatPriceForDisplay(v);
                             const row = (label, value) => (
                               <div key={label} style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", borderBottom: "1px solid " + t.glass.border }}>
                                 <span style={{ color: t.glass.textTertiary }}>{label}</span>
                                 <span style={{ color: t.glass.text, fontWeight: 500 }}>{value}</span>
                               </div>
                             );
-                            const has24h = ms.volume24h != null || ms.high24h != null || ms.low24h != null || ms.changePercent24h != null;
-                            const volStr = ms.volume24h != null && Number.isFinite(ms.volume24h)
-                              ? (ms.volume24h >= 1e9 ? `$${(ms.volume24h / 1e9).toFixed(2)}B` : ms.volume24h >= 1e6 ? `$${(ms.volume24h / 1e6).toFixed(1)}M` : ms.volume24h >= 1e3 ? `$${(ms.volume24h / 1e3).toFixed(0)}K` : `$${ms.volume24h.toFixed(0)}`)
-                              : "—";
-                            const chg = ms.changePercent24h;
-                            const chgStr = chg != null && Number.isFinite(chg) ? `${chg >= 0 ? "+" : ""}${chg.toFixed(2)}%` : "—";
-                            const sections = [];
-                            if (has24h) {
-                              sections.push(
-                                <div key="24h" style={{ marginBottom: 12 }}>
-                                  <div style={{ fontSize: 9, color: t.glass.textTertiary, marginBottom: 6, letterSpacing: "0.06em" }}>24H STATS</div>
-                                  {row("24h Vol", volStr)}
-                                  {row("24h High", fmtPrice(ms.high24h))}
-                                  {row("24h Low", fmtPrice(ms.low24h))}
-                                  {row("24h Chg", chgStr)}
-                                </div>
-                              );
-                            }
-                            if (hasExtended) {
-                              sections.push(
-                                <div key="ext">
-                                  <div style={{ fontSize: 9, color: t.glass.textTertiary, marginBottom: 6, letterSpacing: "0.06em" }}>MARKET OVERVIEW</div>
-                                  {[
-                                    row("Market Cap", fmtUsd(ms.marketCap)),
-                                    row("Market Cap Rank", ms.marketCapRank != null ? "#" + ms.marketCapRank : "—"),
-                                    row("All-Time High", ms.ath != null ? `${fmtUsd(ms.ath)} ${ms.athChangePercent != null ? "(" + fmtPct(ms.athChangePercent) + ")" : ""}` : "—"),
-                                    ms.athDate ? row("ATH Date", new Date(ms.athDate).toLocaleDateString()) : null,
-                                    row("All-Time Low", ms.atl != null ? `${fmtUsd(ms.atl)} ${ms.atlChangePercent != null ? "(" + fmtPct(ms.atlChangePercent) + ")" : ""}` : "—"),
-                                    ms.atlDate ? row("ATL Date", new Date(ms.atlDate).toLocaleDateString()) : null,
-                                    row("Circulating Supply", fmtNum(ms.circulatingSupply)),
-                                    ms.totalSupply != null ? row("Total Supply", fmtNum(ms.totalSupply)) : null,
-                                    ms.maxSupply != null ? row("Max Supply", fmtNum(ms.maxSupply)) : null,
-                                    row("Fully Diluted Val.", fmtUsd(ms.fullyDilutedValuation)),
-                                    ms.lastUpdated ? row("Last Updated", new Date(ms.lastUpdated).toLocaleString()) : null,
-                                  ].filter(Boolean)}
-                                </div>
-                              );
-                            }
+                            const rows = [
+                              row("Market Cap", fmtUsd(ms.marketCap)),
+                              row("Market Cap Rank", ms.marketCapRank != null ? "#" + ms.marketCapRank : "—"),
+                              row("All-Time High", ms.ath != null ? `${fmtUsd(ms.ath)} ${ms.athChangePercent != null ? "(" + fmtPct(ms.athChangePercent) + ")" : ""}` : "—"),
+                              ms.athDate ? row("ATH Date", new Date(ms.athDate).toLocaleDateString()) : null,
+                              row("All-Time Low", ms.atl != null ? `${fmtUsd(ms.atl)} ${ms.atlChangePercent != null ? "(" + fmtPct(ms.atlChangePercent) + ")" : ""}` : "—"),
+                              ms.atlDate ? row("ATL Date", new Date(ms.atlDate).toLocaleDateString()) : null,
+                              row("Circulating Supply", fmtNum(ms.circulatingSupply)),
+                              ms.totalSupply != null ? row("Total Supply", fmtNum(ms.totalSupply)) : null,
+                              ms.maxSupply != null ? row("Max Supply", fmtNum(ms.maxSupply)) : null,
+                              row("Fully Diluted Val.", fmtUsd(ms.fullyDilutedValuation)),
+                              ms.lastUpdated ? row("Last Updated", new Date(ms.lastUpdated).toLocaleString()) : null,
+                            ].filter(Boolean);
                             if (!hasExtended) {
-                              sections.push(
-                                <div key="hint" style={{ color: t.glass.textTertiary, padding: "12px 0", marginTop: 8, borderTop: "1px solid " + t.glass.border, fontSize: 11 }}>
-                                  <p style={{ margin: 0, marginBottom: 6 }}>Redeploy the API (e.g. on Render) to the latest commit to load Market Cap, ATH, ATL, supply, and 24h stats here and in the header.</p>
-                                  <p style={{ margin: 0 }}>Use the latest <code style={{ background: "rgba(255,255,255,0.08)", padding: "2px 6px", borderRadius: 4 }}>server/server.js</code> with <code>/api/coingecko-market</code>.</p>
+                              return (
+                                <div style={{ color: t.glass.textTertiary, padding: "12px 0" }}>
+                                  <p style={{ margin: 0, marginBottom: 8 }}>Restart the API server to load full market data (Market Cap, ATH, ATL, supply, etc.).</p>
+                                  <p style={{ margin: 0, fontSize: 11 }}>Stop and start <code style={{ background: "rgba(255,255,255,0.08)", padding: "2px 6px", borderRadius: 4 }}>npm run dev:api</code> so the updated /api/coingecko-market endpoint is used.</p>
                                 </div>
                               );
                             }
-                            return sections.length ? sections : (
-                              <div style={{ color: t.glass.textTertiary, padding: "12px 0", fontSize: 11 }}>
-                                <p style={{ margin: 0 }}>Loading market data… Redeploy the API to the latest commit if 24h stats and Market Cap never appear.</p>
-                              </div>
-                            );
+                            return rows;
                           })()}
                         </div>
                       </div>,
@@ -3612,67 +3567,36 @@ export default function OmegaDEX() {
                 {(() => {
                   const ms = marketStats;
                   const hasExtended = ms.marketCap != null || ms.ath != null || ms.atl != null || ms.circulatingSupply != null;
-                  const has24h = ms.volume24h != null || ms.high24h != null || ms.low24h != null || ms.changePercent24h != null;
                   const fmtUsd = (v) => v == null || !Number.isFinite(v) ? "—" : v >= 1e9 ? `$${(v / 1e9).toFixed(2)}B` : v >= 1e6 ? `$${(v / 1e6).toFixed(1)}M` : v >= 1e3 ? `$${(v / 1e3).toFixed(0)}K` : `$${Number(v).toFixed(2)}`;
                   const fmtNum = (v) => v == null || !Number.isFinite(v) ? "—" : v >= 1e9 ? `${(v / 1e9).toFixed(2)}B` : v >= 1e6 ? `${(v / 1e6).toFixed(1)}M` : v >= 1e3 ? `${(v / 1e3).toFixed(0)}K` : Number(v).toLocaleString();
                   const fmtPct = (v) => v == null || !Number.isFinite(v) ? "—" : `${(v >= 0 ? "+" : "") + Number(v).toFixed(2)}%`;
-                  const fmtPrice = (v) => v == null || !Number.isFinite(v) ? "—" : formatPriceForDisplay(v);
                   const row = (label, value) => (
                     <div key={label} style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", borderBottom: "1px solid " + t.glass.border }}>
                       <span style={{ color: t.glass.textTertiary, fontSize: 12 }}>{label}</span>
                       <span style={{ color: t.glass.text, fontWeight: 500, fontSize: 12 }}>{value}</span>
                     </div>
                   );
-                  const volStr = ms.volume24h != null && Number.isFinite(ms.volume24h)
-                    ? (ms.volume24h >= 1e9 ? `$${(ms.volume24h / 1e9).toFixed(2)}B` : ms.volume24h >= 1e6 ? `$${(ms.volume24h / 1e6).toFixed(1)}M` : ms.volume24h >= 1e3 ? `$${(ms.volume24h / 1e3).toFixed(0)}K` : `$${ms.volume24h.toFixed(0)}`)
-                    : "—";
-                  const chg = ms.changePercent24h;
-                  const chgStr = chg != null && Number.isFinite(chg) ? `${chg >= 0 ? "+" : ""}${chg.toFixed(2)}%` : "—";
-                  const sections = [];
-                  if (has24h) {
-                    sections.push(
-                      <div key="24h" style={{ marginBottom: 12 }}>
-                        <div style={{ fontSize: 9, color: t.glass.textTertiary, marginBottom: 6, letterSpacing: "0.06em" }}>24H STATS</div>
-                        {row("24h Vol", volStr)}
-                        {row("24h High", fmtPrice(ms.high24h))}
-                        {row("24h Low", fmtPrice(ms.low24h))}
-                        {row("24h Chg", chgStr)}
-                      </div>
-                    );
-                  }
-                  if (hasExtended) {
-                    sections.push(
-                      <div key="ext">
-                        <div style={{ fontSize: 9, color: t.glass.textTertiary, marginBottom: 6, letterSpacing: "0.06em" }}>MARKET OVERVIEW</div>
-                        {[
-                          row("Market Cap", fmtUsd(ms.marketCap)),
-                          row("Market Cap Rank", ms.marketCapRank != null ? "#" + ms.marketCapRank : "—"),
-                          row("All-Time High", ms.ath != null ? `${fmtUsd(ms.ath)} ${ms.athChangePercent != null ? "(" + fmtPct(ms.athChangePercent) + ")" : ""}` : "—"),
-                          ms.athDate ? row("ATH Date", new Date(ms.athDate).toLocaleDateString()) : null,
-                          row("All-Time Low", ms.atl != null ? `${fmtUsd(ms.atl)} ${ms.atlChangePercent != null ? "(" + fmtPct(ms.atlChangePercent) + ")" : ""}` : "—"),
-                          ms.atlDate ? row("ATL Date", new Date(ms.atlDate).toLocaleDateString()) : null,
-                          row("Circulating Supply", fmtNum(ms.circulatingSupply)),
-                          ms.totalSupply != null ? row("Total Supply", fmtNum(ms.totalSupply)) : null,
-                          ms.maxSupply != null ? row("Max Supply", fmtNum(ms.maxSupply)) : null,
-                          row("Fully Diluted Val.", fmtUsd(ms.fullyDilutedValuation)),
-                          ms.lastUpdated ? row("Last Updated", new Date(ms.lastUpdated).toLocaleString()) : null,
-                        ].filter(Boolean)}
-                      </div>
-                    );
-                  }
                   if (!hasExtended) {
-                    sections.push(
-                      <div key="hint" style={{ color: t.glass.textTertiary, padding: "12px 0", marginTop: 8, borderTop: "1px solid " + t.glass.border, fontSize: 11 }}>
-                        <p style={{ margin: 0, marginBottom: 6 }}>Redeploy the API (e.g. on Render) to the latest commit to load Market Cap, ATH, ATL, supply, and 24h stats here and in the header.</p>
-                        <p style={{ margin: 0 }}>Use the latest <code style={{ background: "rgba(255,255,255,0.08)", padding: "2px 6px", borderRadius: 4 }}>server/server.js</code> with <code>/api/coingecko-market</code>.</p>
+                    return (
+                      <div style={{ color: t.glass.textTertiary, padding: "12px 0", fontSize: 12 }}>
+                        <p style={{ margin: 0, marginBottom: 8 }}>Restart the API server to load full market data.</p>
+                        <p style={{ margin: 0, fontSize: 11 }}>Stop and start <code style={{ background: "rgba(255,255,255,0.08)", padding: "2px 6px", borderRadius: 4 }}>npm run dev:api</code></p>
                       </div>
                     );
                   }
-                  return sections.length ? sections : (
-                    <div style={{ color: t.glass.textTertiary, padding: "12px 0", fontSize: 11 }}>
-                      <p style={{ margin: 0 }}>Loading market data… Redeploy the API to the latest commit if 24h stats and Market Cap never appear.</p>
-                    </div>
-                  );
+                  return [
+                    row("Market Cap", fmtUsd(ms.marketCap)),
+                    row("Market Cap Rank", ms.marketCapRank != null ? "#" + ms.marketCapRank : "—"),
+                    row("All-Time High", ms.ath != null ? `${fmtUsd(ms.ath)} ${ms.athChangePercent != null ? "(" + fmtPct(ms.athChangePercent) + ")" : ""}` : "—"),
+                    ms.athDate ? row("ATH Date", new Date(ms.athDate).toLocaleDateString()) : null,
+                    row("All-Time Low", ms.atl != null ? `${fmtUsd(ms.atl)} ${ms.atlChangePercent != null ? "(" + fmtPct(ms.atlChangePercent) + ")" : ""}` : "—"),
+                    ms.atlDate ? row("ATL Date", new Date(ms.atlDate).toLocaleDateString()) : null,
+                    row("Circulating Supply", fmtNum(ms.circulatingSupply)),
+                    ms.totalSupply != null ? row("Total Supply", fmtNum(ms.totalSupply)) : null,
+                    ms.maxSupply != null ? row("Max Supply", fmtNum(ms.maxSupply)) : null,
+                    row("Fully Diluted Val.", fmtUsd(ms.fullyDilutedValuation)),
+                    ms.lastUpdated ? row("Last Updated", new Date(ms.lastUpdated).toLocaleString()) : null,
+                  ].filter(Boolean);
                 })()}
               </div>
             </div>,

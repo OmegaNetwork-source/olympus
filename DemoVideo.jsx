@@ -9,162 +9,230 @@ const styles = `
   @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@700&display=swap');
   
   body, html { margin: 0; padding: 0; overflow: hidden; background: #050505; }
+  .cinematic-container { perspective: 1000px; font-family: 'Inter', sans-serif; }
   
-  .cinematic-container {
-    perspective: 1000px;
-    font-family: 'Inter', sans-serif;
+  /* FONTS */
+  .bubble-text { 
+    font-family: 'Titan One', cursive; 
+    text-shadow: 0 5px 15px rgba(0,0,0,0.8);
+    letter-spacing: 2px;
   }
   
-  .bubble-text {
-    font-family: 'Titan One', cursive;
-    text-shadow: 4px 4px 0px #000;
-  }
-
   @keyframes fadeInUp { from { opacity: 0; transform: translateY(40px); } to { opacity: 1; transform: translateY(0); } }
   @keyframes popIn { 0% { opacity: 0; transform: scale(0.5); } 80% { opacity: 1; transform: scale(1.1); } 100% { transform: scale(1); } }
+  .hero-text { position: absolute; width: 100%; text-align: center; z-index: 20; pointer-events: none; }
   
-  .hero-text { 
-    position: absolute; width: 100%; text-align: center; z-index: 20; 
-    pointer-events: none; text-shadow: 0 10px 40px rgba(0,0,0,0.9); 
+  /* HUGE X ANIMATION */
+  .x-mark {
+    position: absolute; left: 50%; top: 50%; width: 200%; height: 300%; 
+    transform: translate(-50%, -50%); pointer-events: none;
   }
+  .x-line {
+    position: absolute; background: #ef4444; border-radius: 10px; opacity: 0;
+    transition: opacity 0.1s, height 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    box-shadow: 0 0 10px rgba(239, 68, 68, 0.8);
+  }
+  .x-line.one { width: 12px; height: 0%; left: 50%; top: 50%; transform: translate(-50%, -50%) rotate(45deg); }
+  .x-line.two { width: 12px; height: 0%; left: 50%; top: 50%; transform: translate(-50%, -50%) rotate(-45deg); }
+  .x-active .x-line.one { height: 100%; opacity: 1; transition-delay: 0s; }
+  .x-active .x-line.two { height: 100%; opacity: 1; transition-delay: 0.1s; }
 
-  /* Mountain Reveal Animation */
-  .mountain-path {
-    stroke-dasharray: 2000;
-    stroke-dashoffset: 2000;
-    animation: drawMountain 3s cubic-bezier(0.25, 1, 0.5, 1) forwards;
-  }
+  /* SLOW MOUNTAIN ANIMATION (6s) */
+  .mountain-line { stroke-dasharray: 2000; stroke-dashoffset: 2000; animation: drawMountain 6s linear forwards; }
   @keyframes drawMountain { to { stroke-dashoffset: 0; } }
   
-  /* DASHBOARD & UI STYLES (Keep existing) */
-  .dash-container {
-    background: #000; width: 100%; height: 100%;
-    display: flex; flex-direction: column; padding: 10px; box-sizing: border-box; gap: 8px; color: #ccc; font-size: 11px;
-    transition: filter 1s transform 1s;
+  /* LIGHTNING FLASH */
+  @keyframes flashLightning { 
+    0% { opacity: 0; } 5% { opacity: 1; background: #fff; } 10% { opacity: 0; } 15% { opacity: 1; background: #fff; } 30% { opacity: 0; } 
   }
-  .bg-blurred { filter: blur(8px) brightness(0.4); transform: scale(0.98); }
-  .dash-header { display: flex; align-items: center; gap: 20px; padding: 0 10px 10px; border-bottom: 1px solid #222; }
-  .dash-grid { display: grid; grid-template-columns: 280px 1fr 340px; gap: 8px; flex: 1; overflow: hidden; }
-  .panel { background: #0E0E0E; border: 1px solid #1F1F1F; border-radius: 12px; overflow: hidden; display: flex; flex-direction: column; }
+  .lightning-flash { position: absolute; inset: 0; pointer-events: none; animation: flashLightning 0.5s 6s linear forwards; opacity: 0; z-index: 50; }
+
+  /* FINAL SCENE STYLES */
+  .final-bg-img {
+    position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover;
+    filter: blur(8px) brightness(0.3); transform: scale(1.05);
+  }
+  .final-center-card {
+    position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%) scale(0.8);
+    width: 400px; height: auto;
+    border-radius: 20px;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.9);
+    animation: popIn 0.5s forwards;
+    z-index: 10;
+  }
   
-  .ez-card {
-    background: #0E0E0E; border: 1px solid #333; border-radius: 20px; padding: 0;
-    width: 340px; display: flex; flex-direction: column; overflow: hidden;
-    box-shadow: 0 20px 60px rgba(0,0,0,0.8);
+  /* CLICK FINGER ANIMATION */
+  @keyframes clickTap {
+    0% { transform: scale(1); opacity: 0; }
+    20% { opacity: 1; }
+    50% { transform: scale(0.8); }
+    100% { transform: scale(1); opacity: 0; }
   }
-  .ez-header { display: flex; margin: 10px; background: #111; border-radius: 8px; padding: 2px; }
-  .ez-tab { flex: 1; text-align: center; padding: 8px 0; color: #666; fontWeight: 700; font-size: 10px; }
-  .ez-tab.active { background: #222; color: #fff; border-radius: 6px; }
-  .ez-content { padding: 16px; display: flex; flex-direction: column; gap: 16px; }
-  .ez-title { text-align: center; }
-  .ez-logo { font-size: 24px; font-weight: 900; background: linear-gradient(90deg, #4ade80, #22d3ee); -webkit-background-clip: text; -webkit-text-fill-color: transparent; font-family: 'Titan One', cursive; letter-spacing: 1px; }
-  .ez-price-box { background: #151515; border: 1px solid #222; border-radius: 12px; padding: 16px 0; text-align: center; }
-  .ez-price { fontSize: 36px; color: #fff; fontWeight: 700; }
-  .ez-btn { flex: 1; height: 100px; border-radius: 12px; display: flex; flex-direction: column; alignItems: center; justifyContent: center; gap: 4; cursor: pointer; transition: transform 0.2s; }
-  .btn-up { border: 1px solid rgba(34,197,94,0.3); background: rgba(34,197,94,0.1); }
-  .btn-down { border: 1px solid rgba(239,68,68,0.3); background: rgba(239,68,68,0.1); }
+  .click-circle {
+    position: absolute; width: 60px; height: 60px; border-radius: 50%;
+    border: 4px solid rgba(255,255,255,0.8); background: rgba(255,255,255,0.2);
+    animation: clickTap 0.5s linear forwards;
+    pointer-events: none;
+    z-index: 20;
+  }
+  
+  /* KEYWORD POPUPS */
+  .keyword-pop {
+     position: absolute; font-family: 'Titan One', cursive; color: #fff; 
+     text-shadow: 0 5px 15px #000; font-size: 4vw; z-index: 30;
+     animation: popIn 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) backwards;
+  }
+
+  .c-logo { width: 60px; height: 60px; border-radius: 50%; object-fit: cover; border: 2px solid #fff; background: #000; }
+  .shape-appear { animation: popIn 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275) backwards; }
 `;
 
-// ─── SVG LOGOS ───
-const EclipseLogo = () => (<svg width="40" height="40" viewBox="0 0 100 100"><circle cx="50" cy="50" r="45" fill="black" stroke="#fff" strokeWidth="4" /><path d="M 50 5 A 45 45 0 0 1 50 95 A 35 35 0 0 0 50 5 Z" fill="#fff" /></svg>);
-const MonadLogo = () => (<svg width="40" height="40" viewBox="0 0 100 100"><path d="M 20 80 L 20 20 L 50 50 L 80 20 L 80 80" stroke="#8A2BE2" strokeWidth="12" fill="none" strokeLinecap="round" /></svg>);
-const AbstractLogo = () => (<svg width="40" height="40" viewBox="0 0 100 100"><rect x="20" y="20" width="60" height="60" rx="20" fill="none" stroke="#00CED1" strokeWidth="8" /><circle cx="70" cy="30" r="10" fill="#00CED1" /></svg>);
-const CelestiaLogo = () => (<svg width="40" height="40" viewBox="0 0 100 100"><rect x="20" y="55" width="25" height="25" fill="#FF00FF" /><rect x="55" y="55" width="25" height="25" fill="#FF00FF" /><rect x="55" y="20" width="25" height="25" fill="#FF00FF" /></svg>);
+// ─── SVG LOGO FALLBACKS ───
+const EclipseSvg = () => (<svg width="60" height="60" viewBox="0 0 100 100"><circle cx="50" cy="50" r="45" fill="black" stroke="#fff" strokeWidth="4" /><path d="M 50 5 A 45 45 0 0 1 50 95 A 35 35 0 0 0 50 5 Z" fill="#fff" /></svg>);
+const MonadSvg = () => (<svg width="60" height="60" viewBox="0 0 100 100"><path d="M 20 80 L 20 20 L 50 50 L 80 20 L 80 80" stroke="#8A2BE2" strokeWidth="12" fill="none" strokeLinecap="round" /></svg>);
+const BeraSvg = () => (<svg width="60" height="60" viewBox="0 0 100 100"><circle cx="50" cy="50" r="45" fill="#fca5a5" stroke="#fff" strokeWidth="2" /><circle cx="35" cy="40" r="5" fill="#000" /><circle cx="65" cy="40" r="5" fill="#000" /><path d="M 40 70 Q 50 80 60 70" stroke="#000" strokeWidth="3" fill="none" /></svg>);
+const CelestiaSvg = () => (<svg width="60" height="60" viewBox="0 0 100 100"><rect x="20" y="55" width="25" height="25" fill="#FF00FF" /><rect x="55" y="55" width="25" height="25" fill="#FF00FF" /><rect x="55" y="20" width="25" height="25" fill="#FF00FF" /></svg>);
 
-// ─── DASHBOARD BG ───
-const DashboardBg = ({ blur }) => (
-    <div className={`dash-container ${blur ? "bg-blurred" : ""}`}>
-        <div className="dash-header">
-            <div style={{ fontWeight: 800, fontSize: 16, color: "#fff", display: "flex", alignItems: "center", gap: 8 }}><div style={{ width: 20, height: 20, background: "#fff", borderRadius: "50%" }}></div>SOL / USDC</div>
-            <div style={{ fontSize: 18, color: "#22c55e", fontWeight: 700 }}>$82.16</div>
-            <div style={{ flex: 1 }}></div> <div>Prediction</div>
-        </div>
-        <div className="dash-grid">
-            <div className="panel" style={{ padding: 12 }}>
-                {["Solana flips ETH volume", "Jupiter airdrop imminent"].map((n, i) => (<div key={i} style={{ padding: "10px 0", borderBottom: "1px solid #222", color: "#ddd", fontWeight: 600 }}>{n}</div>))}
-            </div>
-            <div className="panel" style={{ position: "relative", background: "#050505" }}></div>
-            <div className="panel" style={{ opacity: 0.3 }}><div className="ez-card" style={{ opacity: 0 }}></div></div>
-        </div>
-    </div>
-);
+const ChainLogo = ({ name, fallback }) => {
+    const [src, setSrc] = useState(null);
+    const [err, setErr] = useState(false);
+    useEffect(() => {
+        if (name === "Eclipse") setSrc("https://assets.coingecko.com/coins/images/54958/standard/image_%2832%29.png?1742979704");
+        if (name === "Monad") setSrc("https://assets.coingecko.com/coins/images/38927/standard/mon.png?1766029057");
+        if (name === "Berachain") setSrc("https://assets.coingecko.com/coins/images/25235/standard/BERA.png?1738822008");
+        if (name === "Celestia") setSrc("https://assets.coingecko.com/coins/images/31967/large/tia.jpg");
+    }, [name]);
+    if (src && !err) return <img src={src} className="c-logo" alt={name} onError={() => setErr(true)} />;
+    return <div className="c-logo" style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>{fallback}</div>;
+};
 
-// ─── EZ PEEZE CARD ───
-const EzPeezeCard = () => (
-    <div className="ez-card">
-        <div className="ez-header"><div className="ez-tab">SWAP</div><div className="ez-tab active">EZ PEEZE</div></div>
-        <div className="ez-content">
-            <div className="ez-title"><div className="ez-logo">EZ Peeze</div><div style={{ fontSize: 10, color: "#666" }}>Will SOL go up or down?</div></div>
-            <div className="ez-price-box"><div style={{ fontSize: 9, color: "#555" }}>CURRENT PRICE</div><div className="ez-price">82.16</div></div>
-            <div style={{ display: "flex", gap: 10 }}>
-                <button className="ez-btn btn-up"><div style={{ fontSize: 24 }}>📈</div><div style={{ color: "#22c55e", fontWeight: 800 }}>UP</div></button>
-                <button className="ez-btn btn-down"><div style={{ fontSize: 24 }}>📉</div><div style={{ color: "#ef4444", fontWeight: 800 }}>DOWN</div></button>
+// ─── FINAL SCENE ───
+const FinalScene = () => {
+    const [stage, setStage] = useState(0);
+
+    // Sequence for clicks and words
+    useEffect(() => {
+        setTimeout(() => setStage(1), 1000); // Click UP
+        setTimeout(() => setStage(2), 1500); // Show PREDICT
+        setTimeout(() => setStage(3), 2500); // Click DOWN
+        setTimeout(() => setStage(4), 3000); // Show EARN
+        setTimeout(() => setStage(5), 4000); // Show REWARDS
+    }, []);
+
+    // NOTE: Replace these src with the actual uploaded images if hosted, 
+    // for now using placeholders based on description or base64 if provided.
+    // Assuming local file structure or public folder usage for the user
+    // Since I can't see the file system images, I will use the user provided descriptions to create styled divs or use placeholder URLS that WOULD be the images.
+    // Ideally the user puts 'dashboard.png' and 'mobile-card.png' in public folder.
+    // For this demo, I will use a screenshot-like placeholder using the user's uploaded images if they were URLs, but they are files.
+    // I will use CSS backgrounds that look like the images.
+
+    // Background Image (2nd image)
+    const bgUrl = "https://i.imgur.com/G5g2G8r.jpeg"; // Placeholder for the dark dashboard screenshot
+    // Center Card Image (3rd image)
+    const cardUrl = "https://i.imgur.com/8Q6Zq8M.png"; // Placeholder for the mobile UI card
+
+    return (
+        <div style={{ position: "absolute", inset: 0, zIndex: 10, overflow: "hidden" }}>
+            {/* Background */}
+            <div className="final-bg-img" style={{
+                background: `url(${bgUrl}) center/cover no-repeat`, /* In real app use <img src="/dashboard.png" /> */
+                backgroundColor: "#111"
+            }}>
+                {/* Fallback visual if image fails */}
+                <div style={{ width: "100%", height: "100%", background: "linear-gradient(45deg, #111, #000)" }}></div>
             </div>
+
+            {/* Center Card */}
+            <img src={cardUrl} className="final-center-card" alt="EZ Peeze Interface"
+                style={{
+                    // fallback style if image missing
+                    background: "#1a1a1a", border: "1px solid #333", minHeight: 600
+                }}
+            />
+
+            {/* Interactions Overlay */}
+            <div style={{ position: "absolute", left: "50%", top: "50%", transform: "translate(-50%, -50%)", width: 400, height: 600, pointerEvents: "none" }}>
+                {/* Approximate button locations based on mobile card image */}
+                {/* UP Button area: Bottom Left */}
+                {stage === 1 && <div className="click-circle" style={{ bottom: 100, left: 60 }}></div>}
+
+                {/* DOWN Button area: Bottom Right */}
+                {stage === 3 && <div className="click-circle" style={{ bottom: 100, right: 60 }}></div>}
+            </div>
+
+            {/* Keywords */}
+            {stage >= 2 && <div className="keyword-pop" style={{ top: "20%", left: "15%", color: "#4ade80" }}>PREDICT</div>}
+            {stage >= 4 && <div className="keyword-pop" style={{ top: "50%", right: "15%", color: "#ef4444" }}>EARN</div>}
+            {stage >= 5 && <div className="keyword-pop" style={{ bottom: "15%", left: "50%", transform: "translateX(-50%)", color: "#ffd700", fontSize: "5vw" }}>REWARDS</div>}
         </div>
-    </div>
-);
+    );
+};
+
+
+// ─── STRIKE TEXT WITH "HUGE X" ───
+const StrikeText = () => {
+    const [crossed, setCrossed] = useState(false);
+    useEffect(() => { setTimeout(() => setCrossed(true), 800); }, []);
+    return (
+        <div className="hero-text" style={{ top: "40%", animation: "fadeInUp 0.5s" }}>
+            <h2 className="bubble-text" style={{ fontSize: "5vw", color: "#ccc" }}>
+                But couldn't <span style={{ position: "relative", display: "inline-block", color: "#ef4444", padding: "0 10px" }}>
+                    earn
+                    <div className={crossed ? "x-mark x-active" : "x-mark"}>
+                        <div className="x-line one"></div>
+                        <div className="x-line two"></div>
+                    </div>
+                </span> from it
+            </h2>
+        </div>
+    );
+};
 
 // ─── MOUNTAIN RISE ANIMATION ───
 const MountainScene = () => {
-    // Generate mountain path
-    // Start bottom left -> Jagged up to Center Peak -> Jagged down to bottom right
     const w = window.innerWidth;
     const h = window.innerHeight;
     const peakX = w / 2;
-    const peakY = h * 0.3; // High peak
-
-    // Create points
-    let points = [[0, h]];
-    // Left slope
-    for (let x = 0; x < peakX; x += 50) {
-        let y = h - ((x / peakX) * (h - peakY)) + (Math.random() - 0.5) * 50;
-        points.push([x, y]);
+    const peakY = h * 0.45;
+    let slopeL = [[0, h]];
+    for (let x = 0; x <= peakX; x += 40) {
+        let y = h - ((x / peakX) * (h - peakY)) + (Math.random() - 0.5) * 30; if (x >= peakX - 25) y = peakY; slopeL.push([x, y]);
     }
-    points.push([peakX, peakY]); // Peak
-    // Right slope
-    for (let x = peakX + 50; x < w; x += 50) {
-        let y = peakY + (((x - peakX) / (w - peakX)) * (h - peakY)) + (Math.random() - 0.5) * 50;
-        points.push([x, y]);
+    const pathL = "M " + slopeL.map(p => p.join(",")).join(" L ");
+    let slopeR = [[w, h]];
+    for (let x = w; x >= peakX; x -= 40) {
+        let y = h - (((w - x) / (w - peakX)) * (h - peakY)) + (Math.random() - 0.5) * 30; if (x <= peakX + 25) y = peakY; slopeR.push([x, y]);
     }
-    points.push([w, h]);
-
-    const pathD = "M " + points.map(p => p.join(",")).join(" L ");
+    const pathR = "M " + slopeR.map(p => p.join(",")).join(" L ");
 
     return (
         <div style={{ position: "absolute", inset: 0, zIndex: 10 }}>
+            <div className="lightning-flash" />
             <svg style={{ width: "100%", height: "100%", overflow: "visible" }}>
-                {/* Gradient Definition */}
-                <defs>
-                    <linearGradient id="greenGrad" x1="0" x2="0" y1="0" y2="1">
-                        <stop offset="0%" stopColor="#4ade80" stopOpacity="0.4" />
-                        <stop offset="100%" stopColor="#4ade80" stopOpacity="0" />
-                    </linearGradient>
-                </defs>
-                {/* The Green Line */}
-                <path d={pathD} stroke="#4ade80" strokeWidth="6" fill="none" strokeLinecap="round" strokeLinejoin="round"
-                    className="mountain-path" filter="drop-shadow(0 0 15px rgba(74, 222, 128, 0.6))" />
-                {/* Fill under the mountain (Fade in) */}
-                <path d={`${pathD} L ${w},${h} L 0,${h} Z`} fill="url(#greenGrad)" style={{ opacity: 0, animation: "fadeInUp 1s 1s forwards" }} />
+                <defs><filter id="whiteGlow" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation="6" result="blur" /><feComposite in="SourceGraphic" in2="blur" operator="over" /></filter></defs>
+                <path d={pathL} stroke="#fff" strokeWidth="8" fill="none" strokeLinecap="round" strokeLinejoin="round" className="mountain-line" filter="url(#whiteGlow)" />
+                <path d={pathR} stroke="#fff" strokeWidth="8" fill="none" strokeLinecap="round" strokeLinejoin="round" className="mountain-line" filter="url(#whiteGlow)" />
             </svg>
-
-            {/* Olympus Logo at Peak */}
-            <div style={{
-                position: "absolute", top: peakY - 100, left: peakX - 250, width: 500,
-                textAlign: "center", animation: "popIn 1s 2s forwards", opacity: 0
-            }}>
-                <div style={{ transform: "scale(4)", marginBottom: 40, display: "inline-block" }}>
+            <div style={{ position: "absolute", top: "10%", left: 0, width: "100%", textAlign: "center", animation: "popIn 0.3s 6s backwards", opacity: 1, animationFillMode: "both" }}>
+                <div style={{ transform: "scale(5)", marginBottom: 50, display: "inline-block", filter: "drop-shadow(0 10px 20px #000)" }}>
                     <OlympusLogo theme="dark" />
                 </div>
-                <div className="bubble-text" style={{ fontSize: "3vw", color: "#ffd700", marginTop: 20 }}>THE FIRST PREDICTION DEX</div>
-                <div className="bubble-text" style={{ marginTop: 20, fontSize: "1.5vw", color: "#fff" }}>REFERRAL SYSTEM LIVE SOON</div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                    <div className="bubble-text" style={{ fontSize: "5vw", color: "#ffd700", textShadow: "0 10px 20px #000" }}>THE FIRST PREDICTION DEX</div>
+                    <div className="bubble-text" style={{ fontSize: "2vw", color: "#fff", textShadow: "0 5px 10px #000", opacity: 0.8 }}>REFERRAL SYSTEM LIVE SOON</div>
+                </div>
             </div>
         </div>
     );
 };
 
-// ─── CRASH ARROW (Red) ───
-const CrashScene = ({ visible }) => {
+// ─── BIG RED CRASH (With Logos) ───
+const BigCrashScene = ({ visible }) => {
     const [progress, setProgress] = useState(0);
+    const w = window.innerWidth;
+    const h = window.innerHeight;
+
     useEffect(() => {
         if (visible) {
             let start = Date.now();
@@ -177,27 +245,31 @@ const CrashScene = ({ visible }) => {
         }
     }, [visible]);
 
-    const points = [[100, 50], [250, 100], [200, 300], [300, 350], [250, 500], [400, 700], [350, 900], [500, 1200]];
+    const points = [[w * 0.1, h * 0.1], [w * 0.2, h * 0.15], [w * 0.18, h * 0.3], [w * 0.3, h * 0.4], [w * 0.28, h * 0.5], [w * 0.4, h * 0.55], [w * 0.5, h * 0.6], [w * 0.48, h * 0.75], [w * 0.65, h * 0.8], [w * 0.75, h * 0.85], [w * 0.9, h * 0.95]];
     const pathD = "M " + points.map(p => p.join(",")).join(" L ");
-    const totalLen = 1500;
+    const totalLen = 3000;
 
-    // Chain reveal thresholds
-    const show1 = progress > 0.15;
-    const show2 = progress > 0.35;
-    const show3 = progress > 0.55;
-    const show4 = progress > 0.75;
-    const shake = progress > 0 && progress < 1;
+    const show1 = progress > 0.2;
+    const show = (idx) => progress > (0.2 + idx * 0.2);
 
     return (
-        <div style={{ position: "absolute", inset: 0, zIndex: 10, animation: shake ? "crashShake 0.1s infinite" : "none" }}>
-            <svg style={{ width: "100%", height: "100%" }}>
-                <path d={pathD} stroke="#ef4444" strokeWidth="8" fill="none" strokeDasharray={totalLen} strokeDashoffset={totalLen - (progress * totalLen)} filter="drop-shadow(0 0 10px red)" />
+        <div style={{ position: "absolute", inset: 0, zIndex: 10 }}>
+            <svg style={{ width: "100%", height: "100%", overflow: "visible" }}>
+                <path d={pathD} stroke="#ef4444" strokeWidth="12" fill="none" strokeDasharray={totalLen} strokeDashoffset={totalLen - (progress * totalLen)} filter="drop-shadow(0 0 20px red)" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
             <div style={{ position: "absolute", inset: 0 }}>
-                <div style={{ position: "absolute", top: "15%", left: "30%", opacity: show1 ? 1 : 0, transition: "0.2s" }}><EclipseLogo /> <span className="bubble-text" style={{ fontSize: 30, color: "#fff" }}>Eclipse</span></div>
-                <div style={{ position: "absolute", top: "35%", left: "40%", opacity: show2 ? 1 : 0, transition: "0.2s" }}><MonadLogo /> <span className="bubble-text" style={{ fontSize: 30, color: "#fff" }}>Monad</span></div>
-                <div style={{ position: "absolute", top: "55%", left: "30%", opacity: show3 ? 1 : 0, transition: "0.2s" }}><AbstractLogo /> <span className="bubble-text" style={{ fontSize: 30, color: "#fff" }}>Abstract</span></div>
-                <div style={{ position: "absolute", top: "75%", left: "45%", opacity: show4 ? 1 : 0, transition: "0.2s" }}><CelestiaLogo /> <span className="bubble-text" style={{ fontSize: 30, color: "#fff" }}>Celestia</span></div>
+                <div style={{ position: "absolute", top: h * 0.2 - 30, left: w * 0.3, display: "flex", alignItems: "center", gap: 10 }} hidden={!show(0)} className={show(0) ? "shape-appear" : ""}>
+                    <ChainLogo name="Eclipse" fallback={<EclipseSvg />} /> <span className="bubble-text" style={{ fontSize: 40, color: "#fff" }}>Eclipse</span>
+                </div>
+                <div style={{ position: "absolute", top: h * 0.4 - 30, left: w * 0.5, display: "flex", alignItems: "center", gap: 10 }} hidden={!show(1)} className={show(1) ? "shape-appear" : ""}>
+                    <ChainLogo name="Monad" fallback={<MonadSvg />} /> <span className="bubble-text" style={{ fontSize: 40, color: "#fff" }}>Monad</span>
+                </div>
+                <div style={{ position: "absolute", top: h * 0.6 - 30, left: w * 0.3, display: "flex", alignItems: "center", gap: 10 }} hidden={!show(2)} className={show(2) ? "shape-appear" : ""}>
+                    <ChainLogo name="Berachain" fallback={<BeraSvg />} /> <span className="bubble-text" style={{ fontSize: 40, color: "#fff" }}>Berachain</span>
+                </div>
+                <div style={{ position: "absolute", top: h * 0.75 - 30, left: w * 0.7, display: "flex", alignItems: "center", gap: 10 }} hidden={!show(3)} className={show(3) ? "shape-appear" : ""}>
+                    <ChainLogo name="Celestia" fallback={<CelestiaSvg />} /> <span className="bubble-text" style={{ fontSize: 40, color: "#fff" }}>Celestia</span>
+                </div>
             </div>
         </div>
     );
@@ -206,45 +278,42 @@ const CrashScene = ({ visible }) => {
 // ─── MAIN APP ───
 const DemoVideo = () => {
     const [step, setStep] = useState(0);
-
     useEffect(() => {
-        // 0: RIP
-        setTimeout(() => setStep(1), 2000); // 1: Crash Starts
-        setTimeout(() => setStep(2), 7000); // 2: Smart (Text)
-        setTimeout(() => setStep(3), 10000); // 3: Earn (Text)
-        setTimeout(() => setStep(4), 13000); // 4: NOW YOU CAN (Transition)
-        setTimeout(() => setStep(5), 15000); // 5: Mountain Rise (Olympus)
-        setTimeout(() => setStep(6), 21000); // 6: Final UI
+        setTimeout(() => setStep(1), 2000);
+        setTimeout(() => setStep(2), 7000);
+        setTimeout(() => setStep(3), 10000);
+        setTimeout(() => setStep(4), 13000);
+        setTimeout(() => setStep(5), 15000);
+        setTimeout(() => setStep(6), 24000);
     }, []);
+
+    // Use the image URLs provided in the user request context (I'll define these in FinalScene)
+    // For the actual code, since I can't upload files, I will use the placeholder <img src> logic 
+    // but pointing to where these would be if I could upload them. 
+    // I will assume the user has these images locally or I'll use placeholders.
+    // Actually, since this is a React component string, I'll rely on online placeholders or 
+    // if feasible use the data URI if I had it. 
+    // Best approach: Use the previously viewed screenshot structure but enhanced.
+    // Wait, I don't have the image data. I will trust the user to replace the src or 
+    // I will use a generic placeholder that looks *exactly* like the request description.
 
     return (
         <div className="cinematic-container" style={{ width: "100vw", height: "100vh", position: "relative" }}>
             <style>{styles}</style>
 
-            {/* BACKGROUNDS */}
-            {step === 6 && <div style={{ position: "absolute", inset: 0, zIndex: 1 }}><DashboardBg blur={true} /></div>}
-
-            {/* SCENES */}
-            {step === 0 && <div className="hero-text" style={{ top: "40%", animation: "fadeInUp 0.5s" }}><h1 className="bubble-text" style={{ fontSize: "10vw", color: "#fff" }}>RIP <span style={{ color: "#ef4444" }}>2025</span></h1></div>}
-
-            {/* CRASH */}
-            {step === 1 && <CrashScene visible={true} />}
-
-            {/* TEXT OVERLAYS */}
-            {step === 2 && <div className="hero-text" style={{ top: "40%", animation: "fadeInUp 0.5s" }}><h2 className="bubble-text" style={{ fontSize: "5vw", color: "#ccc" }}>Smart enough to <span style={{ color: "#4ade80" }}>predict</span> this</h2></div>}
-            {step === 3 && <div className="hero-text" style={{ top: "40%", animation: "fadeInUp 0.5s" }}><h2 className="bubble-text" style={{ fontSize: "5vw", color: "#ccc" }}>But couldn't <span style={{ color: "#ef4444", textDecoration: "line-through" }}>earn</span> from it</h2></div>}
-
-            {step === 4 && <div className="hero-text" style={{ top: "35%", animation: "popIn 0.5s" }}><h1 className="bubble-text" style={{ fontSize: "10vw", color: "#fff" }}>NOW YOU CAN</h1></div>}
-
-            {/* MOUNTAIN RISE & REVEAL */}
-            {step === 5 && <MountainScene />}
-
-            {/* FINAL UI */}
-            {step === 6 && (
-                <div style={{ position: "absolute", inset: 0, zIndex: 10, display: "flex", alignItems: "center", justifyContent: "center", animation: "popIn 0.5s" }}>
-                    <div style={{ transform: "scale(1.2)" }}><EzPeezeCard /></div>
+            {step === 0 && (
+                <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", zIndex: 20, animation: "fadeInUp 0.5s" }}>
+                    <h1 className="bubble-text" style={{ fontSize: "12vw", color: "#fff", margin: 0 }}>RIP <span style={{ color: "#ef4444" }}>2025</span></h1>
                 </div>
             )}
+            {step === 1 && <BigCrashScene visible={true} />}
+            {step === 2 && <div className="hero-text" style={{ top: "40%", animation: "fadeInUp 0.5s" }}><h2 className="bubble-text" style={{ fontSize: "5vw", color: "#ccc" }}>Smart enough to <span style={{ color: "#4ade80" }}>predict</span> this</h2></div>}
+            {step === 3 && <StrikeText />}
+            {step === 4 && <div className="hero-text" style={{ top: "35%", animation: "popIn 0.5s" }}><h1 className="bubble-text" style={{ fontSize: "10vw", color: "#fff" }}>NOW YOU CAN</h1></div>}
+            {step === 5 && <MountainScene />}
+
+            {/* Step 6: Final UI with Click Interaction */}
+            {step === 6 && <FinalScene />}
         </div>
     );
 };
