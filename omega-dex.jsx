@@ -2158,7 +2158,9 @@ export default function OmegaDEX() {
               color: t.glass.red, fontSize: 12, fontWeight: 500,
             }}>
               {isZeroXPair ? (
-                <>0x API: {apiError}. Run <code style={{ background: "rgba(212,175,55,0.2)", padding: "2px 6px", borderRadius: 4 }}>npm run dev:api</code> (or <code style={{ background: "rgba(212,175,55,0.2)", padding: "2px 6px", borderRadius: 4 }}>npm run dev:all</code>) so the proxy can reach 0x. Ensure <code style={{ background: "rgba(212,175,55,0.2)", padding: "2px 6px", borderRadius: 4 }}>VITE_0X_API_KEY</code> is in .env.</>
+                API_BASE
+                  ? <>Price feed temporarily unavailable (0x and fallback). Chart data is still live — try again in a moment.</>
+                  : <>0x API: {apiError}. Run <code style={{ background: "rgba(212,175,55,0.2)", padding: "2px 6px", borderRadius: 4 }}>npm run dev:api</code> (or <code style={{ background: "rgba(212,175,55,0.2)", padding: "2px 6px", borderRadius: 4 }}>npm run dev:all</code>) so the proxy can reach 0x. Ensure <code style={{ background: "rgba(212,175,55,0.2)", padding: "2px 6px", borderRadius: 4 }}>VITE_0X_API_KEY</code> is in .env.</>
               ) : (
                 <>{apiError} — Run <code style={{ background: "rgba(212,175,55,0.2)", padding: "2px 6px", borderRadius: 4 }}>npm run dev:api</code> in a separate terminal, or <code style={{ background: "rgba(212,175,55,0.2)", padding: "2px 6px", borderRadius: 4 }}>npm run dev:all</code> to start both.</>
               )}

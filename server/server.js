@@ -265,20 +265,38 @@ app.get("/api/health", (req, res) => {
 });
 
 // CoinGecko simple price (for 0x fallback: when 0x fails, client can show price from here)
+const coingeckoPriceCache = new Map(); // id -> { price, ts }
+const COINGECKO_CACHE_TTL_MS = 60 * 1000;
+async function fetchCoingeckoPrice(id) {
+  const r = await fetch(
+    `https://api.coingecko.com/api/v3/simple/price?ids=${encodeURIComponent(id)}&vs_currencies=usd`,
+    { headers: { Accept: "application/json", "User-Agent": "OmegaDEX/1.0 (https://olympus.omeganetwork.co)" } }
+  );
+  const data = await r.json();
+  const price = data?.[id]?.usd;
+  return typeof price === "number" ? price : null;
+}
 app.get("/api/coingecko-price", async (req, res) => {
   const id = (req.query.id || req.query.coingeckoId || "").trim().toLowerCase();
   if (!id) return res.status(400).json({ error: "Missing id (CoinGecko token id)" });
+  const cached = coingeckoPriceCache.get(id);
+  if (cached && Date.now() - cached.ts < COINGECKO_CACHE_TTL_MS && cached.price != null) {
+    return res.json({ price: cached.price, id });
+  }
   try {
-    const r = await fetch(
-      `https://api.coingecko.com/api/v3/simple/price?ids=${encodeURIComponent(id)}&vs_currencies=usd`,
-      { headers: { Accept: "application/json", "User-Agent": "OmegaDEX/1.0" } }
-    );
-    const data = await r.json();
-    const price = data?.[id]?.usd;
-    if (typeof price !== "number") return res.status(502).json({ error: "Price not available", id });
-    res.json({ price, id });
+    let price = await fetchCoingeckoPrice(id);
+    if (price == null) {
+      await new Promise((r) => setTimeout(r, 1200));
+      price = await fetchCoingeckoPrice(id);
+    }
+    if (price != null) {
+      coingeckoPriceCache.set(id, { price, ts: Date.now() });
+      return res.json({ price, id });
+    }
+    return res.status(502).json({ error: "Price not available", id });
   } catch (e) {
-    res.status(502).json({ error: e.message || "CoinGecko failed", id });
+    console.warn("[coingecko-price]", id, e.message);
+    return res.status(502).json({ error: e.message || "CoinGecko failed", id });
   }
 });
 
