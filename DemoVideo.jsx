@@ -4,305 +4,317 @@ import OlympusLogo from "./OlympusLogo.jsx";
 
 // ─── STYLES ───
 const styles = `
-  @import url('https://fonts.googleapis.com/css2?family=Unbounded:wght@400;600;800;900&display=swap');
-  @import url('https://fonts.googleapis.com/css2?family=SF+Mono&display=swap');
+  @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;700;900&display=swap');
+  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap');
   
-  body, html { margin: 0; padding: 0; overflow: hidden; background: #000; }
+  body, html { margin: 0; padding: 0; overflow: hidden; background: #0b0e11; }
   
-  @keyframes fadeIn { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
-  @keyframes fadeOut { from { opacity: 1; } to { opacity: 0; } }
-  @keyframes shake { 0% { transform: translate(1px, 1px) rotate(0deg); } 10% { transform: translate(-1px, -2px) rotate(-1deg); } 20% { transform: translate(-3px, 0px) rotate(1deg); } 30% { transform: translate(3px, 2px) rotate(0deg); } 40% { transform: translate(1px, -1px) rotate(1deg); } 50% { transform: translate(-1px, 2px) rotate(-1deg); } 60% { transform: translate(-3px, 1px) rotate(0deg); } 70% { transform: translate(3px, 1px) rotate(-1deg); } 80% { transform: translate(-1px, -1px) rotate(1deg); } 90% { transform: translate(1px, 2px) rotate(0deg); } 100% { transform: translate(1px, -2px) rotate(-1deg); } }
-  @keyframes flash { 0% { opacity: 0; } 10% { opacity: 1; } 100% { opacity: 0; } }
-  @keyframes pulse { 0% { transform: scale(1); opacity: 0.8; } 50% { transform: scale(1.05); opacity: 1; } 100% { transform: scale(1); opacity: 0.8; } }
-  @keyframes float { 0% { transform: translateY(0px); } 50% { transform: translateY(-10px); } 100% { transform: translateY(0px); } }
-  
-  .glass-panel {
-    background: rgba(20, 20, 25, 0.7);
-    backdrop-filter: blur(20px);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+  .cinematic-container {
+    perspective: 1000px;
+    font-family: 'Space Grotesk', sans-serif;
+  }
+
+  /* Text Animations */
+  @keyframes fadeInUp { from { opacity: 0; transform: translateY(40px) scale(0.95); } to { opacity: 1; transform: translateY(0) scale(1); } }
+  @keyframes fadeOut { from { opacity: 1; transform: scale(1); } to { opacity: 0; transform: scale(1.1); } }
+  @keyframes glitch { 
+    0% { transform: translate(0) } 
+    20% { transform: translate(-2px, 2px) } 
+    40% { transform: translate(-2px, -2px) } 
+    60% { transform: translate(2px, 2px) } 
+    80% { transform: translate(2px, -2px) } 
+    100% { transform: translate(0) } 
+  }
+  @keyframes hardFlash { 0% { background: rgba(255,0,0,0); } 10% { background: rgba(255,0,0,0.3); } 100% { background: rgba(255,0,0,0); } }
+
+  .hero-text {
+    position: absolute; width: 100%; text-align: center;
+    z-index: 10; pointer-events: none;
+    text-shadow: 0 10px 30px rgba(0,0,0,0.8);
   }
   
-  .neon-text {
-    text-shadow: 0 0 10px rgba(255,255,255,0.5), 0 0 20px rgba(255,255,255,0.3);
+  .glass-card {
+    background: rgba(16, 20, 24, 0.85);
+    backdrop-filter: blur(24px);
+    border: 1px solid rgba(255,255,255,0.08);
+    box-shadow: 0 20px 50px rgba(0,0,0,0.5);
+    border-radius: 24px;
+    overflow: hidden;
   }
 `;
 
-// ─── CRASH CHART COMPONENT ───
-const CrashChart = ({ crashing, visible }) => {
+// ─── PRO TRADINGVIEW CHART COMPONENT ───
+const ProChart = ({ step }) => {
     const canvasRef = useRef(null);
-    const pricesRef = useRef([]);
+    const dataRef = useRef([]); // {o,h,l,c,v}
 
     useEffect(() => {
         const canvas = canvasRef.current;
         if (!canvas) return;
         const ctx = canvas.getContext("2d");
-        const w = canvas.width = window.innerWidth;
-        const h = canvas.height = window.innerHeight;
 
-        // Initialize prices
-        let cur = h * 0.4;
-        for (let i = 0; i < w / 5; i++) {
-            pricesRef.current.push(cur);
-            cur += (Math.random() - 0.5) * 5;
+        // Config
+        const candleWidth = 8;
+        const spacing = 4;
+        const totalW = canvas.width = window.innerWidth;
+        const totalH = canvas.height = window.innerHeight;
+
+        // Initialize standard price
+        let currentPrice = 100;
+
+        // Generate initial flat history (so screen isn't empty)
+        for (let i = 0; i < 50; i++) {
+            const volatility = 0.5;
+            const o = currentPrice;
+            const c = o + (Math.random() - 0.5) * volatility;
+            const h = Math.max(o, c) + Math.random() * volatility;
+            const l = Math.min(o, c) - Math.random() * volatility;
+            dataRef.current.push({ o, h, l, c, v: Math.random() * 50 });
+            currentPrice = c;
         }
 
         let frame = 0;
-        const loop = () => {
+        let crashTriggered = false;
+        let crashMomentum = 0;
+
+        const render = () => {
             frame++;
-            ctx.clearRect(0, 0, w, h);
+            ctx.fillStyle = "#0b0e11";
+            ctx.fillRect(0, 0, totalW, totalH);
 
-            // Update logic
-            const last = pricesRef.current[pricesRef.current.length - 1];
-            let next = last;
+            // ─── GRID ───
+            ctx.strokeStyle = "rgba(255,255,255,0.03)";
+            ctx.lineWidth = 1;
+            for (let y = 0; y < totalH; y += 100) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(totalW, y); ctx.stroke(); }
+            for (let x = 0; x < totalW; x += 100) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, totalH); ctx.stroke(); }
 
-            if (crashing) {
-                // Crash hard
-                next += (Math.random() * 20); // Down is positive Y
+            // ─── LOGIC: PUMP TEHN DUMP ───
+            // Step 0-1: Parabolic Pump (The "Fakeout")
+            // Step 2: TRIGGER CRASH
+
+            let o = currentPrice;
+            let c, h, l;
+
+            const isCrashing = step >= 2;
+
+            if (isCrashing) {
+                // 📉 CRASH MODE
+                if (!crashTriggered) { crashTriggered = true; crashMomentum = 5; }
+
+                crashMomentum *= 1.05; // Accelerate fall
+                const drop = crashMomentum + (Math.random() * 5);
+                c = o - drop;
+                // Tiny wicks on crash
+                h = o + Math.random() * 2;
+                l = c - Math.random() * 5;
+                // High volume on crash
+                dataRef.current.push({ o, h, l, c, v: 1000 + Math.random() * 500 });
+
             } else {
-                // Normal wobble
-                next += (Math.random() - 0.5) * 10;
+                // 📈 PUMP MODE (Parabolic)
+                // As steps progress, pump harder
+                const pumpFactor = frame / 500; // slowly ramp up
+                const volatility = 2 + (frame * 0.05);
+
+                c = o + (Math.random() * 1.5) + (frame * 0.02); // Upward drift
+                // Occasional red candle to look real
+                if (Math.random() > 0.8) c = o - (Math.random() * 2);
+
+                h = Math.max(o, c) + Math.random() * volatility;
+                l = Math.min(o, c) - Math.random() * volatility;
+                dataRef.current.push({ o, h, l, c, v: 100 + Math.random() * 200 });
             }
-            // Keep within bounds
-            if (next < 50) next = 50 + Math.random() * 10;
-            if (next > h) next = h; // floor
 
-            pricesRef.current.push(next);
-            if (pricesRef.current.length > w / 5) pricesRef.current.shift(); // Scroll
+            currentPrice = c;
 
-            // Draw Area
-            ctx.beginPath();
-            ctx.moveTo(0, h);
-            pricesRef.current.forEach((p, i) => {
-                ctx.lineTo(i * 5, p);
+            // Keep only enough candles to fill screen + buffer
+            // Actually let's keep more and scroll camera
+            const maxCandles = Math.ceil(totalW / (candleWidth + spacing)) + 20;
+            if (dataRef.current.length > maxCandles) dataRef.current.shift();
+
+            // ─── DRAW CANDLES ───
+            // Calculate Y scale to fit active range
+            const visible = dataRef.current;
+            const minP = Math.min(...visible.map(d => d.l));
+            const maxP = Math.max(...visible.map(d => d.h));
+            const padding = totalH * 0.2;
+            const scaleY = (totalH - padding * 2) / (maxP - minP || 1);
+
+            // Helper to map Price -> Y
+            const getY = (p) => totalH - padding - ((p - minP) * scaleY);
+
+            visible.forEach((d, i) => {
+                const x = i * (candleWidth + spacing);
+                const yO = getY(d.o);
+                const yC = getY(d.c);
+                const yH = getY(d.h);
+                const yL = getY(d.l);
+                const isUp = d.c >= d.o;
+                const color = isUp ? "#00E396" : "#FF0044"; // Vivid Green/Red
+
+                ctx.fillStyle = color;
+                ctx.strokeStyle = color;
+                ctx.lineWidth = 1;
+
+                // Wick
+                ctx.beginPath(); ctx.moveTo(x + candleWidth / 2, yH); ctx.lineTo(x + candleWidth / 2, yL); ctx.stroke();
+
+                // Body
+                const height = Math.abs(yC - yO);
+                ctx.fillRect(x, Math.min(yO, yC), candleWidth, Math.max(1, height));
+
+                // Volume (at bottom, subtle)
+                const volMax = 2000;
+                const volH = (d.v / volMax) * 100;
+                ctx.fillStyle = isUp ? "rgba(0, 227, 150, 0.15)" : "rgba(255, 0, 68, 0.15)";
+                ctx.fillRect(x, totalH - volH, candleWidth, volH);
             });
-            ctx.lineTo((pricesRef.current.length - 1) * 5, h);
-            ctx.fillStyle = crashing ? "rgba(255, 50, 50, 0.2)" : "rgba(0, 255, 136, 0.1)";
+
+            // ─── CURRENT PRICE CURSOR ───
+            const last = visible[visible.length - 1];
+            const lastY = getY(last.c);
+            const lastX = (visible.length - 1) * (candleWidth + spacing) + candleWidth / 2;
+
+            // Dotted line
+            ctx.setLineDash([4, 4]);
+            ctx.strokeStyle = "rgba(255,255,255,0.4)";
+            ctx.beginPath(); ctx.moveTo(0, lastY); ctx.lineTo(totalW, lastY); ctx.stroke();
+            ctx.setLineDash([]);
+
+            // Price Label
+            ctx.fillStyle = last.c >= last.o ? "#00E396" : "#FF0044";
+            ctx.fillRect(totalW - 80, lastY - 12, 80, 24);
+            ctx.fillStyle = "#fff";
+            ctx.font = "bold 12px 'JetBrains Mono'";
+            ctx.fillText(last.c.toFixed(2), totalW - 70, lastY + 5);
+
+            // Blinking dot
+            ctx.beginPath();
+            ctx.arc(lastX + 10, lastY, 4, 0, Math.PI * 2);
+            ctx.fillStyle = "#fff";
             ctx.fill();
 
-            // Draw Line
-            ctx.beginPath();
-            pricesRef.current.forEach((p, i) => {
-                if (i === 0) ctx.moveTo(i * 5, p);
-                else ctx.lineTo(i * 5, p);
-            });
-            ctx.lineWidth = 3;
-            ctx.strokeStyle = crashing ? "#ff3333" : "#00ff88"; // Red if crashing
-            ctx.stroke();
-
-            requestAnimationFrame(loop);
+            requestAnimationFrame(render);
         };
-        const anim = requestAnimationFrame(loop);
+
+        const anim = requestAnimationFrame(render);
         return () => cancelAnimationFrame(anim);
-    }, [crashing]);
+    }, [step]);
 
-    return <canvas ref={canvasRef} style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", zIndex: 0, opacity: visible ? 0.4 : 0, transition: "opacity 1s" }} />;
+    return <canvas ref={canvasRef} style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", zIndex: 0 }} />;
 };
 
-// ─── LOGO COMPONENT ───
-const ChainLogo = ({ name, color, delay }) => (
-    <div style={{
-        display: "flex", alignItems: "center", gap: 15, marginBottom: 20,
-        animation: `fadeIn 0.5s ease-out ${delay}s backwards, float 3s ease-in-out infinite`
-    }}>
-        <div style={{
-            width: 50, height: 50, borderRadius: "50%", background: color,
-            display: "flex", alignItems: "center", justifyContent: "center",
-            fontSize: 24, fontWeight: 900, color: "#fff", boxShadow: `0 0 20px ${color}`
-        }}>
-            {name.substring(0, 1)}
-        </div>
-        <div style={{ fontSize: 32, fontWeight: 700, color: "#fff" }}>{name}</div>
-    </div>
-);
-
-// ─── DEMO INTERFACE (MOCKUP) ───
-const MockDEX = () => {
-    return (
-        <div className="glass-panel" style={{
-            width: "80%", maxWidth: 1000, height: 500, margin: "0 auto",
-            borderRadius: 24, padding: 30, display: "flex", gap: 30, zIndex: 10, position: "relative",
-            animation: "fadeIn 1s ease-out"
-        }}>
-            {/* Header Mock */}
-            <div style={{ position: "absolute", top: 20, left: 30, fontSize: 18, fontWeight: 900, color: "#fff", display: "flex", gap: 10 }}>
-                <span>OLYMPUS</span>
-                <span style={{ opacity: 0.5, fontWeight: 400 }}>| Prediction DEX</span>
-            </div>
-
-            {/* Connector */}
-            <div style={{ position: "absolute", top: 20, right: 30, padding: "8px 16px", borderRadius: 20, background: "#fff", color: "#000", fontWeight: 700, fontSize: 12 }}>
-                0x839...29a
-            </div>
-
-            {/* Left: Chart Mockup */}
-            <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 15, marginTop: 40 }}>
-                <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
-                    <div style={{ width: 48, height: 48, borderRadius: "50%", background: "#444", display: "flex", alignItems: "center", justifyContent: "center" }}>SOL</div>
-                    <div>
-                        <div style={{ fontWeight: 900, color: "#fff", fontSize: 24 }}>SOL / USDC</div>
-                        <div style={{ color: "#aaa", fontSize: 14 }}>$185.42 <span style={{ color: "#ff3333" }}>-12.4%</span></div>
-                    </div>
-                </div>
-                <div className="glass-panel" style={{ flex: 1, borderRadius: 16, overflow: "hidden", position: "relative", background: "rgba(0,0,0,0.3)" }}>
-                    {/* Static chart visual */}
-                    <svg width="100%" height="100%" viewBox="0 0 500 300" preserveAspectRatio="none">
-                        {/* Grid */}
-                        <path d="M0,50 L500,50 M0,100 L500,100 M0,150 L500,150 M0,200 L500,200 M0,250 L500,250" stroke="rgba(255,255,255,0.05)" strokeWidth="1" />
-                        {/* Candles (Red Crash) */}
-                        <rect x="50" y="50" width="10" height="40" fill="#ff3333" /> <line x1="55" y1="40" x2="55" y2="100" stroke="#ff3333" />
-                        <rect x="80" y="80" width="10" height="60" fill="#ff3333" /> <line x1="85" y1="70" x2="85" y2="150" stroke="#ff3333" />
-                        <rect x="110" y="130" width="10" height="30" fill="#00ff88" /> <line x1="115" y1="120" x2="115" y2="170" stroke="#00ff88" />
-                        <rect x="140" y="150" width="10" height="80" fill="#ff3333" /> <line x1="145" y1="150" x2="145" y2="240" stroke="#ff3333" />
-                        <rect x="170" y="220" width="10" height="40" fill="#ff3333" /> <line x1="175" y1="210" x2="175" y2="280" stroke="#ff3333" />
-                        {/* Line */}
-                        <path d="M0,60 L50,70 L80,110 L110,140 L140,190 L170,240 L200,280 L500,400" stroke="#ff3333" strokeWidth="2" fill="none" />
-                    </svg>
-                    {/* Floating Info */}
-                    <div style={{ position: "absolute", top: 10, left: 10, fontSize: 10, color: "#666" }}>15m Chart</div>
-                </div>
-            </div>
-
-            {/* Right: EZ Peeze Panel */}
-            <div className="glass-panel" style={{ width: 340, padding: 24, borderRadius: 24, border: "1px solid rgba(0,255,136,0.2)", marginTop: 40, display: "flex", flexDirection: "column" }}>
-                <div style={{ textAlign: "center", marginBottom: 20 }}>
-                    <h2 style={{
-                        margin: 0,
-                        background: "linear-gradient(135deg, #0cebeb, #20e3b2, #29ffc6)",
-                        WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent",
-                        fontSize: 32, fontWeight: 900, textTransform: "uppercase", letterSpacing: "-1px"
-                    }}>EZ Peeze</h2>
-                    <div style={{ color: "#888", fontSize: 12, marginTop: 5 }}>Will SOL go up or down?</div>
-                </div>
-
-                <div className="glass-panel" style={{ padding: 20, borderRadius: 16, marginBottom: 20, textAlign: "center", background: "rgba(255,255,255,0.03)" }}>
-                    <div style={{ color: "#666", fontSize: 10, textTransform: "uppercase", letterSpacing: 1 }}>Current Price</div>
-                    <div style={{ color: "#fff", fontSize: 36, fontWeight: 900, fontFamily: "'SF Mono', monospace", margin: "5px 0" }}>185.42</div>
-                    <div style={{ color: "#ff3333", fontSize: 12 }}>▼ 12.4%</div>
-                </div>
-
-                <div style={{ display: "flex", gap: 12, marginTop: "auto" }}>
-                    <button style={{
-                        flex: 1, padding: "20px 0", borderRadius: 16, border: "none",
-                        background: "rgba(255,255,255,0.05)", color: "#aaa", fontWeight: 800, fontSize: 16, cursor: "pointer"
-                    }}>UP</button>
-                    <button style={{
-                        flex: 1, padding: "20px 0", borderRadius: 16, border: "none",
-                        background: "linear-gradient(135deg, #ff3333, #aa0000)", color: "#fff", fontWeight: 800, fontSize: 16,
-                        boxShadow: "0 10px 30px rgba(255,0,0,0.3)", transform: "scale(1.05)", cursor: "pointer"
-                    }}>DOWN</button>
-                </div>
-
-                <div style={{ margin: "20px 0 0", padding: "10px", background: "rgba(0,255,0,0.1)", borderRadius: 12, border: "1px solid rgba(0,255,0,0.2)", color: "#00ff88", fontSize: 11, textAlign: "center" }}>
-                    Winning Payout: <strong>1.95x</strong>
-                </div>
-            </div>
-        </div>
-    );
-};
-
-// ─── MAIN APP ───
+// ─── COMPOSED DEMO SCENE ───
 const DemoVideo = () => {
-    const [step, setStep] = useState(0);
+    const [step, setStep] = useState(0); // 0:RIP, 1:PumpNames, 2:Crash, 3:SmartText, 4:EarnText, 5:NowYouCan, 6:Reveal, 7:Mock
 
     useEffect(() => {
         // TIMELINE CONFIG (ms)
-        // 0: RIP
-        // 1: Logos
-        // 2: Chart Crash
-        // 3: Smart Text 1
-        // 4: Smart Text 2
-        // 5: NOW YOU CAN
-        // 6: OMEGA Reveal
-        // 7: Demo Interface
-
-        setTimeout(() => setStep(1), 2500); // Show Logos after RIP
-        setTimeout(() => setStep(2), 7000); // Show Chart Crash
-        setTimeout(() => setStep(3), 11000); // "Smart enough"
-        setTimeout(() => setStep(4), 15000); // "Earn from it"
-        setTimeout(() => setStep(5), 18000); // "NOW YOU CAN"
-        setTimeout(() => setStep(6), 20000); // Reveal
-        setTimeout(() => setStep(7), 24000); // Interface
+        // starts at 0 (RIP 2025)
+        setTimeout(() => setStep(1), 3000);  // 3s: Names Fade In (Chart Pumping)
+        setTimeout(() => setStep(2), 8000);  // 8s: CRASH (Chart Drops Hard)
+        setTimeout(() => setStep(3), 12000); // 12s: "Smart enough"
+        setTimeout(() => setStep(4), 16000); // 16s: "Earn from it"
+        setTimeout(() => setStep(5), 19000); // 19s: "NOW YOU CAN"
+        setTimeout(() => setStep(6), 22000); // 22s: Reveal Logo
+        setTimeout(() => setStep(7), 26000); // 26s: Interface Mockup
     }, []);
 
     return (
-        <div style={{
-            background: "#050505", width: "100vw", height: "100vh",
-            color: "#fff", display: "flex", flexDirection: "column",
-            alignItems: "center", justifyContent: "center", overflow: "hidden",
-            fontFamily: "'Unbounded', sans-serif", position: "relative"
-        }}>
+        <div className="cinematic-container" style={{ width: "100vw", height: "100vh", position: "relative" }}>
             <style>{styles}</style>
 
-            {/* BACKGROUND CHART (Visible in scenes 1+) */}
-            <CrashChart crashing={true} visible={step >= 1 && step <= 5} />
+            {/* BACKGROUND CHART: Always visible, logic driven by 'step' prop */}
+            <ProChart step={step} />
+
+            {/* VIGNETTE / OVERLAY to make text pop */}
+            <div style={{ position: "absolute", inset: 0, background: "radial-gradient(circle at center, transparent 0%, #000 120%)", pointerEvents: "none" }} />
+            {step >= 2 && step <= 5 && <div style={{ position: "absolute", inset: 0, background: "linear-gradient(to bottom, rgba(255,0,68,0.1), transparent)", animation: "hardFlash 0.5s" }} />}
 
             {/* SCENE 0: RIP 2025 */}
             {step === 0 && (
-                <h1 style={{
-                    fontSize: "10vw", fontWeight: 900, color: "#ff3333", margin: 0,
-                    animation: "fadeIn 1s ease-out", textShadow: "0 0 50px rgba(255,0,0,0.5)"
-                }}>RIP 2025</h1>
-            )}
-
-            {/* SCENE 1: LOGOS */}
-            {step === 1 && (
-                <div style={{ zIndex: 2 }}>
-                    <ChainLogo name="Eclipse" color="#000" delay={0} />
-                    <ChainLogo name="Monad" color="#8A2BE2" delay={0.5} />
-                    <ChainLogo name="Abstract" color="#00CED1" delay={1} />
-                    <ChainLogo name="Celestia" color="#FF00FF" delay={1.5} />
-                    <div style={{
-                        color: "#666", fontSize: "2vw", marginTop: 40, textAlign: "center",
-                        animation: "fadeIn 1s ease-out 2s backwards"
-                    }}>and all other copy & paste chains...</div>
+                <div className="hero-text" style={{ top: "35%", animation: "fadeInUp 1s ease-out" }}>
+                    <h1 style={{ fontSize: "10vw", fontWeight: 900, margin: 0, color: "#FF0044", letterSpacing: -5 }}>RIP 2025</h1>
                 </div>
             )}
 
-            {/* SCENE 3: TEXT 1 */}
-            {step === 3 && (
-                <h1 style={{ fontSize: "5vw", textAlign: "center", padding: "0 40px", animation: "fadeIn 1s", zIndex: 2 }}>
-                    You were smart enough to <br /><span style={{ color: "#00ff88", fontSize: "6vw" }}>predict correctly.</span>
-                </h1>
+            {/* SCENE 1: NAMES (The Pump) */}
+            {step === 1 && (
+                <div className="hero-text" style={{ top: "15%", textAlign: "left", paddingLeft: "10%", animation: "fadeInUp 1s" }}>
+                    {["Eclipse", "Monad", "Abstract", "Celestia"].map((n, i) => (
+                        <div key={n} style={{ fontSize: "5vw", fontWeight: 700, color: "#fff", opacity: 0, animation: `fadeInUp 0.5s ease-out ${i * 0.4}s forwards` }}>
+                            {n}
+                        </div>
+                    ))}
+                    <div style={{ fontSize: "2vw", color: "#888", marginTop: 20, animation: "fadeInUp 0.5s ease-out 2s forwards", opacity: 0 }}>
+                        and all other copy & paste chains
+                    </div>
+                </div>
             )}
 
-            {/* SCENE 4: TEXT 2 */}
+            {/* SCENE 3: "Smart enough to predict" */}
+            {step === 3 && (
+                <div className="hero-text" style={{ top: "40%", animation: "fadeInUp 0.8s" }}>
+                    <div style={{ fontSize: "3vw", color: "#ccc", marginBottom: 10 }}>You were smart enough to</div>
+                    <div style={{ fontSize: "6vw", fontWeight: 800, color: "#00E396" }}>PREDICT THE TOP.</div>
+                </div>
+            )}
+
+            {/* SCENE 4: "Couldn't earn" */}
             {step === 4 && (
-                <h1 style={{ fontSize: "5vw", textAlign: "center", padding: "0 40px", animation: "fadeIn 1s", zIndex: 2 }}>
-                    But didn't have a way to <br /><span style={{ color: "#ff3333", fontSize: "6vw", textDecoration: "line-through" }}>earn form it.</span>
-                </h1>
+                <div className="hero-text" style={{ top: "40%", animation: "fadeInUp 0.8s" }}>
+                    <div style={{ fontSize: "3vw", color: "#ccc", marginBottom: 10 }}>But didn't have a way to</div>
+                    <div style={{ fontSize: "6vw", fontWeight: 800, color: "#FF0044", textDecoration: "line-through" }}>EARN FROM IT.</div>
+                </div>
             )}
 
             {/* SCENE 5: NOW YOU CAN */}
             {step === 5 && (
-                <div style={{ display: "flex", flexDirection: "column", alignItems: "center", zIndex: 2 }}>
-                    <h1 style={{
-                        fontSize: "10vw", fontWeight: 900, textAlign: "center",
-                        color: "#fff", textShadow: "0 0 50px #00ff88",
-                        animation: "shake 0.5s infinite"
-                    }}>NOW YOU CAN.</h1>
-                    <div style={{ fontSize: "2vw", color: "#00ff88", animation: "flash 0.2s infinite" }}>Short the narrative.</div>
+                <div className="hero-text" style={{ top: "35%", animation: "glitch 0.2s infinite" }}>
+                    <div style={{ fontSize: "12vw", fontWeight: 900, color: "#fff", lineHeight: 0.9 }}>NOW<br />YOU<br />CAN.</div>
                 </div>
             )}
 
             {/* SCENE 6: REVEAL */}
             {step === 6 && (
-                <div style={{ textAlign: "center", animation: "pulse 2s infinite", zIndex: 2, display: "flex", flexDirection: "column", alignItems: "center" }}>
-                    <div style={{ transform: "scale(6)", margin: "40px 0" }}>
+                <div className="hero-text" style={{ top: "25%", animation: "fadeInUp 1s" }}>
+                    <div style={{ transform: "scale(5)", marginBottom: 60, display: "inline-block" }}>
                         <OlympusLogo theme="dark" />
                     </div>
-                    <h2 style={{ fontSize: "3vw", fontWeight: 400, color: "#888", letterSpacing: 5, marginTop: 40 }}>THE PREDICTION DEX</h2>
-                    <div style={{ marginTop: 20, fontSize: "1.5vw", color: "#ffd700" }}>- REFERRAL SYSTEM LIVE SOON -</div>
+                    <div style={{ fontSize: "2vw", color: "#ffd700", letterSpacing: 4, marginTop: 40 }}>THE FIRST PREDICTION DEX</div>
+                    <div style={{ marginTop: 20, fontSize: "1vw", color: "rgba(255,255,255,0.4)" }}>REFERRAL SYSTEM LIVE SOON</div>
                 </div>
             )}
 
-            {/* SCENE 7: INTERFACE */}
+            {/* SCENE 7: INTERFACE MOCK (Embedded) */}
             {step === 7 && (
-                <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column" }}>
-                    <MockDEX />
-                    <h2 style={{ fontSize: "2vw", color: "#666", marginTop: 20, animation: "fadeIn 1s" }}>
-                        Trade the <span style={{ color: "#fff" }}>Volatility</span>. Not just the Token.
-                    </h2>
+                <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", animation: "fadeInUp 1s" }}>
+                    <div className="glass-card" style={{ width: "90%", maxWidth: 1200, height: "80%", padding: 40, display: "flex", gap: 40 }}>
+                        {/* Fake Chart Area */}
+                        <div style={{ flex: 1, background: "rgba(0,0,0,0.3)", borderRadius: 16, position: "relative", overflow: "hidden" }}>
+                            <div style={{ position: "absolute", top: 20, left: 20, fontSize: 24, fontWeight: 700, color: "#fff" }}>SOL/USDC <span style={{ color: "#FF0044" }}>-42.0%</span></div>
+                            {/* Reuse chart logic but trapped inside? Or just SVG static for mock */}
+                            <svg width="100%" height="100%" viewBox="0 0 800 400" preserveAspectRatio="none">
+                                <path d="M0,350 Q200,350 300,300 T500,50 L520,350 L550,380 L800,400" fill="none" stroke="#FF0044" strokeWidth="4" />
+                                <path d="M0,400 L0,350 Q200,350 300,300 T500,50 L520,350 L550,380 L800,400 L800,400 Z" fill="rgba(255,0,68,0.2)" />
+                            </svg>
+                        </div>
+                        {/* EZ Panel */}
+                        <div style={{ width: 350, display: "flex", flexDirection: "column", justifyContent: "center" }}>
+                            <div style={{ fontSize: 40, fontWeight: 900, background: "linear-gradient(to right, #00E396, #00B8D9)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", marginBottom: 20 }}>EZ Peeze</div>
+                            <div style={{ fontSize: 14, color: "#888", marginBottom: 40 }}>Will SOL go up or down?</div>
+
+                            <div style={{ padding: 30, background: "rgba(255,255,255,0.03)", borderRadius: 20, textAlign: "center", marginBottom: 40 }}>
+                                <div style={{ fontSize: 12, textTransform: "uppercase", color: "#666" }}>Current Price</div>
+                                <div style={{ fontSize: 48, fontWeight: 700, color: "#fff", fontFamily: "'JetBrains Mono'" }}>124.50</div>
+                            </div>
+
+                            <div style={{ display: "flex", gap: 20 }}>
+                                <button style={{ flex: 1, padding: 25, fontSize: 18, border: 0, borderRadius: 16, background: "rgba(0,227,150,0.15)", color: "#00E396", fontWeight: 800 }}>UP</button>
+                                <button style={{ flex: 1, padding: 25, fontSize: 18, border: 0, borderRadius: 16, background: "#FF0044", color: "#fff", fontWeight: 800, boxShadow: "0 10px 40px rgba(255,0,68,0.4)" }}>DOWN</button>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             )}
 
