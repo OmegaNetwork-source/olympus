@@ -1214,30 +1214,41 @@ export default function OmegaDEX() {
     try {
       setApiError(null);
       if (zeroxPair) {
-        const taker = wallet.address || "0x0000000000000000000000000000000000000000";
-        const sellAmt = "1000000000000000000";
+        // Default to CoinGecko for display (works in prod without 0x key). 0x is only required for swaps.
+        const cgId = ZEROX_COINGECKO_FALLBACK[zeroxPair.baseToken];
         let mid = 0;
-        try {
-          const p = await getPrice({
-            chainId: zeroxPair.chainId,
-            sellToken: zeroxPair.baseAddress,
-            buyToken: zeroxPair.quoteAddress,
-            sellAmount: sellAmt,
-            taker,
-          });
-          const quoteDecimals = zeroxPair.quoteDecimals ?? 6;
-          mid = parseFloat(ethers.formatUnits(p.buyAmount || "0", quoteDecimals));
-        } catch (zeroxErr) {
-          const cgId = ZEROX_COINGECKO_FALLBACK[zeroxPair.baseToken];
-          if (cgId && API_BASE) {
-            try {
-              const r = await fetch(`${API_BASE}/api/coingecko-price?id=${encodeURIComponent(cgId)}`);
-              const data = r.ok ? await r.json().catch(() => ({})) : {};
-              const priceNum = data?.price != null ? Number(data.price) : NaN;
-              if (Number.isFinite(priceNum) && priceNum > 0) mid = priceNum;
-            } catch (_) {}
+        if (cgId && API_BASE) {
+          try {
+            const r = await fetch(`${API_BASE}/api/coingecko-price?id=${encodeURIComponent(cgId)}`);
+            const data = r.ok ? await r.json().catch(() => ({})) : {};
+            const priceNum = data?.price != null ? Number(data.price) : NaN;
+            if (Number.isFinite(priceNum) && priceNum > 0) mid = priceNum;
+          } catch (_) {}
+        }
+        if (mid <= 0) {
+          try {
+            const taker = wallet.address || "0x0000000000000000000000000000000000000000";
+            const sellAmt = "1000000000000000000";
+            const p = await getPrice({
+              chainId: zeroxPair.chainId,
+              sellToken: zeroxPair.baseAddress,
+              buyToken: zeroxPair.quoteAddress,
+              sellAmount: sellAmt,
+              taker,
+            });
+            const quoteDecimals = zeroxPair.quoteDecimals ?? 6;
+            mid = parseFloat(ethers.formatUnits(p.buyAmount || "0", quoteDecimals));
+          } catch (zeroxErr) {
+            if (cgId && API_BASE) {
+              try {
+                const r = await fetch(`${API_BASE}/api/coingecko-price?id=${encodeURIComponent(cgId)}`);
+                const data = r.ok ? await r.json().catch(() => ({})) : {};
+                const priceNum = data?.price != null ? Number(data.price) : NaN;
+                if (Number.isFinite(priceNum) && priceNum > 0) mid = priceNum;
+              } catch (_) {}
+            }
+            if (mid <= 0) throw zeroxErr;
           }
-          if (mid <= 0) throw zeroxErr;
         }
         if (mid > 0) {
           const spread = mid * 0.0005;
@@ -1252,7 +1263,7 @@ export default function OmegaDEX() {
             asks: [{ price: mid + spread, amount: 100, cumulative: 100 }],
           });
         } else {
-          throw new Error("0x price failed and no fallback");
+          throw new Error("Price unavailable (CoinGecko and 0x failed)");
         }
       } else if (nonEvmPair) {
         try {
@@ -1313,6 +1324,23 @@ export default function OmegaDEX() {
   useEffect(() => {
     loadData();
   }, [loadData, selectedPair]);
+
+  // When 0x + fallback both fail for a zerox pair, auto-retry a few times (helps with cold start / rate limits)
+  const priceFeedRetryRef = useRef({ count: 0, timer: null });
+  useEffect(() => {
+    if (!apiError || !zeroxPair) return;
+    const maxRetries = 3;
+    if (priceFeedRetryRef.current.count >= maxRetries) return;
+    const t = setTimeout(() => {
+      priceFeedRetryRef.current.count += 1;
+      loadData();
+    }, 4000);
+    priceFeedRetryRef.current.timer = t;
+    return () => clearTimeout(t);
+  }, [apiError, zeroxPair, loadData]);
+  useEffect(() => {
+    if (!zeroxPair) priceFeedRetryRef.current = { count: 0, timer: null };
+  }, [selectedPair, zeroxPair]);
 
   useEffect(() => {
     if (!nonEvmPair) return;
@@ -2159,7 +2187,7 @@ export default function OmegaDEX() {
             }}>
               {isZeroXPair ? (
                 API_BASE
-                  ? <>Price feed temporarily unavailable (0x and fallback). Chart data is still live — try again in a moment.</>
+                  ? <>Price feed temporarily unavailable (0x and fallback). Chart data is still live — retrying automatically…</>
                   : <>0x API: {apiError}. Run <code style={{ background: "rgba(212,175,55,0.2)", padding: "2px 6px", borderRadius: 4 }}>npm run dev:api</code> (or <code style={{ background: "rgba(212,175,55,0.2)", padding: "2px 6px", borderRadius: 4 }}>npm run dev:all</code>) so the proxy can reach 0x. Ensure <code style={{ background: "rgba(212,175,55,0.2)", padding: "2px 6px", borderRadius: 4 }}>VITE_0X_API_KEY</code> is in .env.</>
               ) : (
                 <>{apiError} — Run <code style={{ background: "rgba(212,175,55,0.2)", padding: "2px 6px", borderRadius: 4 }}>npm run dev:api</code> in a separate terminal, or <code style={{ background: "rgba(212,175,55,0.2)", padding: "2px 6px", borderRadius: 4 }}>npm run dev:all</code> to start both.</>
