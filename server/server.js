@@ -231,6 +231,9 @@ function broadcast(msg) {
 // Pairs & token listing
 // 0x Swap API proxy (bypasses CORS; use when frontend gets "Failed to fetch")
 const ZEROX_KEY = process.env.VITE_0X_API_KEY || process.env.ZEROX_API_KEY || "";
+if (!ZEROX_KEY) console.warn("[0x] No API key set (VITE_0X_API_KEY or ZEROX_API_KEY). 0x requests may fail.");
+else console.log("[0x] API key is set.");
+
 app.get("/api/zerox/price", async (req, res) => {
   try {
     const params = new URLSearchParams(req.query).toString();
@@ -239,6 +242,7 @@ app.get("/api/zerox/price", async (req, res) => {
     if (ZEROX_KEY) headers["0x-api-key"] = ZEROX_KEY;
     const r = await fetch(url, { headers });
     const data = await r.json();
+    if (!r.ok) console.warn("[0x] price non-ok:", r.status, data?.reason || data?.message || "");
     res.status(r.status).json(data);
   } catch (e) {
     res.status(502).json({ reason: e.message || "0x proxy error" });
@@ -262,6 +266,11 @@ app.get("/api/zerox/quote", async (req, res) => {
 // Health check (for deployment: verify backend is reachable)
 app.get("/api/health", (req, res) => {
   res.json({ ok: true, service: "olympus-api", ts: Date.now() });
+});
+
+// Debug: confirm 0x key is loaded (do not use in production for sensitive data)
+app.get("/api/debug-0x", (req, res) => {
+  res.json({ zeroxKeySet: !!ZEROX_KEY, zeroxKeyLength: ZEROX_KEY ? ZEROX_KEY.length : 0 });
 });
 
 // CoinGecko simple price (for 0x fallback: when 0x fails, client can show price from here)
