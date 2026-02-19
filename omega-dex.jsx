@@ -873,14 +873,31 @@ function useBinancePrice(cgId, fallbackSymbol) {
   useEffect(() => {
     let symbol = cgId ? BINANCE_MAPPING[cgId] : null;
 
-    // Fallback: if no mapping, valid ticker (e.g. "JUP") -> try JUPUSDT
+    // Fallback logic
     if (!symbol && fallbackSymbol && typeof fallbackSymbol === "string" && fallbackSymbol.length >= 2) {
       symbol = fallbackSymbol.toLowerCase() + "usdt";
     }
 
     if (!symbol) { setPrice(null); return; }
 
-    const ws = new WebSocket(`wss://stream.binance.com:9443/ws/${symbol}@trade`);
+    const wsUrl = `wss://stream.binance.com:9443/ws/${symbol}@trade`;
+    const restUrl = `https://api.binance.com/api/v3/ticker/price?symbol=${symbol.toUpperCase()}`;
+
+    // 1. Initial Fetch via REST (Instant)
+    fetch(restUrl)
+      .then(r => r.json())
+      .then(d => {
+        if (d && d.price) {
+          console.log(`[Binance] REST price for ${symbol}:`, d.price);
+          setPrice(prev => (prev === null ? parseFloat(d.price) : prev));
+        }
+      })
+      .catch(e => console.warn("[Binance] REST failed:", e));
+
+    // 2. WebSocket for Live Updates
+    const ws = new WebSocket(wsUrl);
+
+    ws.onopen = () => console.log(`[Binance] WS Connected: ${symbol}`);
 
     ws.onmessage = (event) => {
       try {
@@ -891,12 +908,14 @@ function useBinancePrice(cgId, fallbackSymbol) {
       } catch (_) { }
     };
 
-    ws.onerror = () => {
-      // If constructed symbol (e.g. TRUMPUSDT) doesn't exist, this might fail silently or close. available-check not easy via WS.
+    ws.onerror = (err) => {
+      console.warn(`[Binance] WS Error for ${symbol}:`, err);
     };
 
     return () => {
-      ws.close();
+      try {
+        ws.close();
+      } catch (e) { }
     };
   }, [cgId, fallbackSymbol]);
 
