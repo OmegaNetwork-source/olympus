@@ -39,6 +39,7 @@ import {
 import TradingViewChart from "./components/TradingViewChart.jsx";
 import CryptoNews from "./components/CryptoNews.jsx";
 import PredictionNews from "./components/PredictionNews.jsx";
+import PredictionChart from "./components/PredictionChart.jsx";
 import TradingViewTechnical from "./components/TradingViewTechnical.jsx";
 
 // ─── Theme System: Dark (default) + Light ───
@@ -785,7 +786,6 @@ const ZEROX_PAIRS = [
   // ─── Ethereum (1) ───
   { id: "ETH/USDC", baseToken: "ETH", quoteToken: "USDC", chainId: 1, baseAddress: ETH_NATIVE, quoteAddress: USDC_ETH, tradingViewSymbol: "BINANCE:ETHUSDC" },
   { id: "ETH/USDT", baseToken: "ETH", quoteToken: "USDT", chainId: 1, baseAddress: ETH_NATIVE, quoteAddress: USDT_ETH, tradingViewSymbol: "BINANCE:ETHUSDT" },
-  { id: "WBTC/USDC", baseToken: "WBTC", quoteToken: "USDC", chainId: 1, baseAddress: WBTC_ETH, quoteAddress: USDC_ETH, tradingViewSymbol: "BINANCE:BTCUSDT" },
   { id: "LINK/USDC", baseToken: "LINK", quoteToken: "USDC", chainId: 1, baseAddress: LINK_ETH, quoteAddress: USDC_ETH, tradingViewSymbol: "BINANCE:LINKUSDT" },
   { id: "UNI/USDC", baseToken: "UNI", quoteToken: "USDC", chainId: 1, baseAddress: UNI_ETH, quoteAddress: USDC_ETH, tradingViewSymbol: "BINANCE:UNIUSDT" },
   { id: "AAVE/USDC", baseToken: "AAVE", quoteToken: "USDC", chainId: 1, baseAddress: AAVE_ETH, quoteAddress: USDC_ETH, tradingViewSymbol: "BINANCE:AAVEUSDT" },
@@ -800,10 +800,8 @@ const ZEROX_PAIRS = [
   { id: "FLOKI/USDC", baseToken: "FLOKI", quoteToken: "USDC", chainId: 1, baseAddress: FLOKI_ETH, quoteAddress: USDC_ETH, tradingViewSymbol: "BINANCE:FLOKIUSDT" },
   { id: "BONK/USDC", baseToken: "BONK", quoteToken: "USDC", chainId: 1, baseAddress: BONK_ETH, quoteAddress: USDC_ETH, tradingViewSymbol: "BINANCE:BONKUSDT" },
   { id: "WIF/USDC", baseToken: "WIF", quoteToken: "USDC", chainId: 1, baseAddress: WIF_ETH, quoteAddress: USDC_ETH, tradingViewSymbol: "BINANCE:WIFUSDT" },
-  { id: "RENDER/USDC", baseToken: "RENDER", quoteToken: "USDC", chainId: 1, baseAddress: RENDER_ETH, quoteAddress: USDC_ETH, tradingViewSymbol: "BINANCE:RNDRUSDT" },
   { id: "FET/USDC", baseToken: "FET", quoteToken: "USDC", chainId: 1, baseAddress: FET_ETH, quoteAddress: USDC_ETH, tradingViewSymbol: "BINANCE:FETUSDT" },
   { id: "DOT/USDC", baseToken: "DOT", quoteToken: "USDC", chainId: 1, baseAddress: DOT_ETH, quoteAddress: USDC_ETH, tradingViewSymbol: "BINANCE:DOTUSDT" },
-  { id: "APT/USDC", baseToken: "APT", quoteToken: "USDC", chainId: 1, baseAddress: APT_ETH, quoteAddress: USDC_ETH, tradingViewSymbol: "BINANCE:APTUSDT" },
   // ─── Polygon (137) ───
   { id: "MATIC/USDC-POLY", baseToken: "MATIC", quoteToken: "USDC", chainId: 137, baseAddress: WMATIC_POLY, quoteAddress: USDC_POLY, tradingViewSymbol: "BINANCE:MATICUSDT" },
   { id: "ETH/USDC-POLY", baseToken: "ETH", quoteToken: "USDC", chainId: 137, baseAddress: WETH_POLY, quoteAddress: USDC_POLY, tradingViewSymbol: "BINANCE:ETHUSDC" },
@@ -852,6 +850,7 @@ const NON_EVM_PAIRS = [
   { id: "TIA/USDC", baseToken: "TIA", quoteToken: "USDC", tradingViewSymbol: "BINANCE:TIAUSDT", chainLabel: "Celestia" },
   { id: "SEI/USDC", baseToken: "SEI", quoteToken: "USDC", tradingViewSymbol: "BINANCE:SEIUSDT", chainLabel: "Sei" },
   { id: "STX/USDC", baseToken: "STX", quoteToken: "USDC", tradingViewSymbol: "BINANCE:STXUSDT", chainLabel: "Stacks" },
+  { id: "APT/USDC", baseToken: "APT", quoteToken: "USDC", tradingViewSymbol: "BINANCE:APTUSDT", chainLabel: "Aptos", coingeckoId: "aptos" },
 ];
 
 export default function OmegaDEX() {
@@ -941,8 +940,8 @@ export default function OmegaDEX() {
   const EIGHT_BALL_ANSWERS = ["Yes", "No", "Maybe", "Ape in Bitch", "Floor it"];
   const isAdmin = connected && wallet.address?.toLowerCase() === ADMIN_WALLET;
 
-  const [windowWidth, setWindowWidth] = useState(typeof window !== "undefined" ? window.innerWidth : 1024);
-  const isMobile = windowWidth <= 768;
+  const [windowWidth, setWindowWidth] = useState(() => typeof window !== "undefined" ? window.innerWidth : 1024);
+  const isMobile = windowWidth <= 900;
   useEffect(() => {
     const onResize = () => setWindowWidth(window.innerWidth);
     window.addEventListener("resize", onResize);
@@ -2158,15 +2157,84 @@ export default function OmegaDEX() {
                       onClick={() => { setPairSearchOpen((o) => !o); if (!pairSearchOpen) setPairSearchQuery(""); }}
                       style={{
                         background: theme === "dark" ? "rgba(255,255,255,0.06)" : "rgba(255,250,240,0.8)", border: "1px solid " + t.glass.border,
-                        borderRadius: 12, padding: "8px 12px", fontSize: 15, fontWeight: 700,
-                        color: t.glass.text, cursor: "pointer", minWidth: 160, textAlign: "left",
+                        borderRadius: 12, padding: isMobile ? "14px 16px" : "8px 12px", fontSize: isMobile ? 16 : 15, fontWeight: 700,
+                        color: t.glass.text, cursor: "pointer", minWidth: isMobile ? "100%" : 160, textAlign: "left",
                         display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8,
                       }}
                     >
                       <span>{currentPairInfo.baseToken || "PRE"} / {currentPairInfo.quoteToken || "mUSDC"}</span>
-                      <span style={{ fontSize: 10, opacity: 0.7 }}>▼</span>
+                      <span style={{ fontSize: isMobile ? 11 : 10, opacity: 0.7 }}>{isMobile ? "Tap to see all tokens ▼" : "▼"}</span>
                     </button>
-                    {pairSearchOpen && (
+                    {pairSearchOpen && isMobile ? (
+                      <div style={{
+                        position: "fixed", inset: 0, zIndex: 10002, background: theme === "dark" ? "#0a0a0c" : "#f5f5f5",
+                        display: "flex", flexDirection: "column", paddingTop: "env(safe-area-inset-top, 0)",
+                      }}>
+                        <div style={{ padding: "16px 12px 12px", borderBottom: "1px solid " + t.glass.border, display: "flex", alignItems: "center", gap: 12 }}>
+                          <input
+                            type="text"
+                            placeholder="Search token..."
+                            value={pairSearchQuery}
+                            onChange={(e) => setPairSearchQuery(e.target.value)}
+                            autoFocus
+                            style={{
+                              flex: 1, padding: "14px 16px", borderRadius: 12, border: "1px solid " + t.glass.border,
+                              background: theme === "dark" ? "#1a1a1e" : "#fff", color: theme === "dark" ? "#fff" : "#1a1a1a",
+                              fontSize: 16, outline: "none",
+                            }}
+                          />
+                          <button type="button" onClick={() => setPairSearchOpen(false)} style={{
+                            padding: "12px 20px", borderRadius: 12, border: "none", background: t.glass.border, color: t.glass.text, fontSize: 14, fontWeight: 600, cursor: "pointer",
+                          }}>Done</button>
+                        </div>
+                        <div style={{ flex: 1, overflow: "auto", padding: "8px 0 24px" }}>
+                          {filteredPairs.length === 0 ? (
+                            <div style={{ padding: 24, color: t.glass.textTertiary, fontSize: 14, textAlign: "center" }}>No tokens match</div>
+                          ) : (
+                            filteredPairs.map((p) => {
+                              const isFav = favoritePairIds.includes(p.id);
+                              return (
+                                <button
+                                  key={p.id}
+                                  type="button"
+                                  onClick={() => { setSelectedPair(p.id); setPairSearchOpen(false); setPairSearchQuery(""); }}
+                                  style={{
+                                    display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%", padding: "16px 20px", textAlign: "left", border: "none",
+                                    background: selectedPair === p.id ? (theme === "dark" ? "rgba(255,255,255,0.12)" : "rgba(212,175,55,0.18)") : "transparent",
+                                    color: theme === "dark" ? "#fff" : "#1a1a1a", fontSize: 16, fontWeight: selectedPair === p.id ? 700 : 500,
+                                    cursor: "pointer", transition: "background 0.15s", borderBottom: "1px solid " + (theme === "dark" ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.06)"),
+                                  }}
+                                >
+                                  <span>
+                                    {p.baseToken} / {p.quoteToken}
+                                    {p.chainLabel ? (
+                                      <span style={{ display: "block", fontSize: 12, color: t.glass.textTertiary, marginTop: 2 }}>{p.chainLabel}</span>
+                                    ) : p.chainId && p.chainId !== 1 ? (
+                                      <span style={{ display: "block", fontSize: 12, color: t.glass.textTertiary, marginTop: 2 }}>
+                                        {p.chainId === 137 ? "Polygon" : p.chainId === 42161 ? "Arbitrum" : p.chainId === 10 ? "Optimism" : p.chainId === 8453 ? "Base" : p.chainId === 56 ? "BNB" : p.chainId === 43114 ? "Avalanche" : ""}
+                                      </span>
+                                    ) : null}
+                                  </span>
+                                  <span
+                                    role="button"
+                                    tabIndex={0}
+                                    onClick={(e) => toggleFavoritePair(p.id, e)}
+                                    onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggleFavoritePair(p.id, e); } }}
+                                    aria-label={isFav ? "Remove from favorites" : "Add to favorites"}
+                                    style={{
+                                      fontSize: 20, cursor: "pointer", padding: "8px",
+                                      color: isFav ? (theme === "dark" ? "#fbbf24" : "#d4af37") : (theme === "dark" ? "rgba(255,255,255,0.35)" : "rgba(0,0,0,0.35)"),
+                                    }}
+                                  >
+                                    {isFav ? "★" : "☆"}
+                                  </span>
+                                </button>
+                              );
+                            })
+                          )}
+                        </div>
+                      </div>
+                    ) : pairSearchOpen && !isMobile ? (
                       <div style={{
                         position: "absolute", top: "100%", left: 0, marginTop: 4, zIndex: 10001,
                         minWidth: 280, maxHeight: 320, overflow: "hidden", display: "flex", flexDirection: "column",
@@ -2236,9 +2304,9 @@ export default function OmegaDEX() {
                           )}
                         </div>
                       </div>
-                    )}
+                    ) : null}
                   </div>
-                  {pairSearchOpen && (
+                  {pairSearchOpen && !isMobile && (
                     <div
                       role="button"
                       tabIndex={-1}
@@ -2410,9 +2478,28 @@ export default function OmegaDEX() {
                               </div>
                             </div>
 
+                            {/* Price history chart — use selected outcome so chart matches the row you're trading */}
+                            {(() => {
+                              const belongsToEvent = predictionBetMarket && ev.markets?.some((m) => m.yesTokenId === predictionBetMarket.yesTokenId);
+                              const chartMarket = (belongsToEvent && (predictionBetMarket.yesTokenId || predictionBetMarket.noTokenId)) ? predictionBetMarket : ev.markets?.[0];
+                              if (!chartMarket?.yesTokenId && !chartMarket?.noTokenId) return null;
+                              const chartLabel = chartMarket.groupItemTitle || chartMarket.question || "Outcome";
+                              return (
+                                <div style={{ marginBottom: 28, borderRadius: 12, border: "1px solid " + t.glass.border, overflow: "hidden", background: theme === "dark" ? "rgba(255,255,255,0.03)" : "rgba(255,255,255,0.6)", padding: "16px 20px 20px" }}>
+                                  <div style={{ fontSize: 11, fontWeight: 700, color: t.glass.textTertiary, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 10 }}>Chart: {chartLabel}</div>
+                                  <PredictionChart
+                                    yesTokenId={chartMarket.yesTokenId}
+                                    noTokenId={chartMarket.noTokenId}
+                                    interval={["1d", "1w", "1m", "3m", "all"].includes(chartRange) ? chartRange : "1w"}
+                                    onIntervalChange={setChartRange}
+                                    theme={theme}
+                                    network={predictionNetwork}
+                                  />
+                                </div>
+                              );
+                            })()}
 
-
-                            {/* Outcomes list — no chart */}
+                            {/* Outcomes list */}
                             {ev.markets?.length > 0 && (
                                 <div style={{ marginBottom: 28 }}>
                                   <div style={{ display: "flex", flexDirection: "column", gap: 0, borderRadius: 12, overflow: "hidden", border: "1px solid " + t.glass.border }}>
@@ -2447,18 +2534,10 @@ export default function OmegaDEX() {
                                   </div>
                                 </div>
                             )}
-
-                            {/* Description/Resolution */}
-                            {ev.markets?.[0]?.description && (
-                              <div style={{ padding: 24, borderRadius: 16, background: theme === "dark" ? "rgba(255,255,255,0.02)" : "rgba(255,255,255,0.5)", border: "1px solid " + t.glass.border }}>
-                                <div style={{ fontSize: 11, fontWeight: 700, color: t.glass.textTertiary, textTransform: "uppercase", marginBottom: 8 }}>Resolution Logic</div>
-                                <div style={{ fontSize: 13, color: t.glass.textSecondary, lineHeight: 1.6 }}>{ev.markets[0].description}</div>
-                              </div>
-                            )}
                           </div>
                         </div>
                         <div style={rightPanelStyle}>
-                          <div style={{ flex: 1, minHeight: 0, overflow: "auto" }}>
+                          <div style={{ flexShrink: 0 }}>
                           {predictionBetMarket ? (
                             <div style={{ padding: 20 }}>
                               {/* Outcome name */}
@@ -2551,11 +2630,14 @@ export default function OmegaDEX() {
                             </div>
                           )}
                           </div>
-                          {/* News — bottom right (Polymarket-style) */}
-                          <div style={{ borderTop: "1px solid " + t.glass.border, flexShrink: 0, height: 320, display: "flex", flexDirection: "column", background: theme === "dark" ? "rgba(0,0,0,0.2)" : "rgba(255,255,255,0.5)" }}>
-                            <div style={{ padding: "12px 16px", fontSize: 11, fontWeight: 700, color: t.glass.textTertiary, textTransform: "uppercase", letterSpacing: "0.05em" }}>News</div>
-                            <div style={{ flex: 1, minHeight: 0, overflow: "auto" }}>
-                              <PredictionNews theme={theme} query={ev.title} />
+                          {/* News — fills remaining sidebar; scrollable with visible affordance */}
+                          <div style={{ borderTop: "1px solid " + t.glass.border, flex: 1, minHeight: 220, display: "flex", flexDirection: "column", background: theme === "dark" ? "rgba(0,0,0,0.2)" : "rgba(255,255,255,0.5)" }}>
+                            <div style={{ padding: "12px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 6 }}>
+                              <span style={{ fontSize: 11, fontWeight: 700, color: t.glass.textTertiary, textTransform: "uppercase", letterSpacing: "0.05em" }}>News</span>
+                              <span style={{ fontSize: 10, color: t.glass.textTertiary, opacity: 0.9 }}>↕ scroll</span>
+                            </div>
+                            <div className="prediction-news-scroll" style={{ flex: 1, minHeight: 0, overflow: "auto" }}>
+                              <PredictionNews theme={theme} query={ev.title || ev.markets?.[0]?.question || ev.slug || "prediction"} />
                             </div>
                           </div>
                         </div>
@@ -2761,6 +2843,19 @@ export default function OmegaDEX() {
                                     onMouseLeave={(e) => { e.currentTarget.style.background = theme === "dark" ? "rgba(239,68,68,0.1)" : "rgba(239,68,68,0.08)"; }}
                                   >No {ev.noPrice != null ? Math.round(ev.noPrice * 100) + "¢" : ""}</button>
                                 </div>
+                                <a
+                                  href={`https://news.google.com/search?q=${encodeURIComponent(ev.title || ev.slug || "prediction")}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  onClick={(e) => e.stopPropagation()}
+                                  style={{
+                                    display: "inline-flex", alignItems: "center", gap: 6, marginTop: 10,
+                                    fontSize: 11, fontWeight: 600, color: theme === "dark" ? "#7dd3fc" : "#0284c7",
+                                    textDecoration: "none",
+                                  }}
+                                >
+                                  News →
+                                </a>
                               </div>
                             </div>
                           );
@@ -3146,9 +3241,8 @@ export default function OmegaDEX() {
                     )}
                     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginTop: 8 }}>
                       <button onClick={() => placeBet("up")} disabled={betPlacing || !ezPezeConfig?.escrowAddress} style={{
-                        padding: "24px 16px", borderRadius: 20, border: "none", cursor: betPlacing || !ezPezeConfig?.escrowAddress ? "not-allowed" : "pointer",
+                        padding: "24px 16px", borderRadius: 20, border: "2px solid rgba(50,215,75,0.4)", cursor: betPlacing || !ezPezeConfig?.escrowAddress ? "not-allowed" : "pointer",
                         background: "linear-gradient(135deg, rgba(50,215,75,0.2), rgba(50,215,75,0.08))",
-                        border: "2px solid rgba(50,215,75,0.4)",
                         display: "flex", flexDirection: "column", alignItems: "center", gap: 6,
                         opacity: betPlacing || !ezPezeConfig?.escrowAddress ? 0.6 : 1,
                       }}>
@@ -3157,9 +3251,8 @@ export default function OmegaDEX() {
                         <span style={{ fontSize: 12, color: t.glass.textTertiary }}>Price goes higher</span>
                       </button>
                       <button onClick={() => placeBet("down")} disabled={betPlacing || !ezPezeConfig?.escrowAddress} style={{
-                        padding: "24px 16px", borderRadius: 20, border: "none", cursor: betPlacing || !ezPezeConfig?.escrowAddress ? "not-allowed" : "pointer",
+                        padding: "24px 16px", borderRadius: 20, border: "2px solid rgba(255,69,58,0.4)", cursor: betPlacing || !ezPezeConfig?.escrowAddress ? "not-allowed" : "pointer",
                         background: "linear-gradient(135deg, rgba(255,69,58,0.2), rgba(255,69,58,0.08))",
-                        border: "2px solid rgba(255,69,58,0.4)",
                         display: "flex", flexDirection: "column", alignItems: "center", gap: 6,
                         opacity: betPlacing || !ezPezeConfig?.escrowAddress ? 0.6 : 1,
                       }}>
@@ -4110,6 +4203,11 @@ export default function OmegaDEX() {
         * { box-sizing: border-box; margin: 0; padding: 0; }
         ::-webkit-scrollbar { display: none; }
         * { -ms-overflow-style: none; scrollbar-width: none; }
+        .prediction-news-scroll { scrollbar-width: thin; -ms-overflow-style: auto; }
+        .prediction-news-scroll::-webkit-scrollbar { display: block; width: 8px; }
+        .prediction-news-scroll::-webkit-scrollbar-track { background: rgba(255,255,255,0.04); border-radius: 4px; }
+        .prediction-news-scroll::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2); border-radius: 4px; }
+        .prediction-news-scroll::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.3); }
         input[type="range"]::-webkit-slider-thumb {
           appearance: none; width: 18px; height: 18px; border-radius: 50%;
           background: #fff; box-shadow: 0 4px 12px rgba(0,0,0,0.5); cursor: pointer;
@@ -4124,7 +4222,7 @@ export default function OmegaDEX() {
           filter: brightness(1.2);
         }
         button:active { transform: scale(0.95) translateY(0); }
-        @media (max-width: 768px) {
+        @media (max-width: 900px) {
           .dex-mobile-layout button { min-height: 44px; touch-action: manipulation; }
           .dex-pair-bar button { min-height: 44px; touch-action: manipulation; }
           body { -webkit-text-size-adjust: 100%; }

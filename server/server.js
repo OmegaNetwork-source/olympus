@@ -461,7 +461,6 @@ loadEzBets();
 const ZEROX_PAIRS = {
   "ETH/USDC": { chainId: 1, sellToken: "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE", buyToken: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48", buyDecimals: 6 },
   "ETH/USDT": { chainId: 1, sellToken: "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE", buyToken: "0xdAC17F958D2ee523a2206206994597C13D831ec7", buyDecimals: 6 },
-  "WBTC/USDC": { chainId: 1, sellToken: "0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599", buyToken: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48", buyDecimals: 6 },
   "LINK/USDC": { chainId: 1, sellToken: "0x514910771AF9Ca656af840dff83E8264EcF986CA", buyToken: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48", buyDecimals: 6 },
   "UNI/USDC": { chainId: 1, sellToken: "0x1f9840a85d5aF5bf1D1762F925BDADdC4201F984", buyToken: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48", buyDecimals: 6 },
   "AAVE/USDC": { chainId: 1, sellToken: "0x7Fc66500c84A76Ad7e9c93437bFc5Ac33E2DDaE9", buyToken: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48", buyDecimals: 6 },
@@ -476,10 +475,8 @@ const ZEROX_PAIRS = {
   "FLOKI/USDC": { chainId: 1, sellToken: "0xcf0C122c6b73ff809C693DB761e7BaeBe62b6a2E", buyToken: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48", buyDecimals: 6 },
   "BONK/USDC": { chainId: 1, sellToken: "0x1151CB3d861920e07a38e03eEAd12C32178567F6", buyToken: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48", buyDecimals: 6 },
   "WIF/USDC": { chainId: 1, sellToken: "0x81B4dB0c719DB9bC7A8D8EbCF58CA2162BC53353", buyToken: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48", buyDecimals: 6 },
-  "RENDER/USDC": { chainId: 1, sellToken: "0x6De037ef9aD2725EB40118Bb1702EBb27e4Aeb24", buyToken: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48", buyDecimals: 6 },
   "FET/USDC": { chainId: 1, sellToken: "0xaea46A60368A7bd060eec7DF8Cba43b7EF41ad85", buyToken: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48", buyDecimals: 6 },
   "DOT/USDC": { chainId: 1, sellToken: "0x7083609fCE4d1d8Dc0C979AAb8c869Ea2C873402", buyToken: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48", buyDecimals: 6 },
-  "APT/USDC": { chainId: 1, sellToken: "0x42aD8AED9519efc6dC8B699d261A25cF79021596", buyToken: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48", buyDecimals: 6 },
   "MATIC/USDC-POLY": { chainId: 137, sellToken: "0x0d500B1d8E8eF31E21C99d1Db9A6444d3ADf1270", buyToken: "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174", buyDecimals: 6 },
   "ETH/USDC-POLY": { chainId: 137, sellToken: "0x7ceB23fD6bC0adD59E62ac25578270cFf1b9f619", buyToken: "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174", buyDecimals: 6 },
   "ETH/USDC-ARB": { chainId: 42161, sellToken: "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE", buyToken: "0xaf88d065e77c8cC2239327C5EDb3A432268e5831", buyDecimals: 6 },
@@ -521,6 +518,7 @@ const NON_EVM_PAIRS = {
   "TIA/USDC": { coingeckoId: "celestia" },
   "SEI/USDC": { coingeckoId: "sei-network" },
   "STX/USDC": { coingeckoId: "blockstack" },
+  "APT/USDC": { coingeckoId: "aptos" },
 };
 
 const nonEvmPriceCache = new Map(); // pairId -> { price, ts }
@@ -1087,11 +1085,14 @@ app.get("/api/prediction/markets", async (req, res) => {
       } catch { return []; }
     };
 
-    // Fan out: trending, new, and per-tag fetches
-    // Simplified fetch: speed optimization
+    // Fan out: more trending/new + key tags so the list doesn’t feel empty
     const fetches = [
-      fetchEventsPage("limit=20&order=volume24hr&ascending=false", "trending"),
-      fetchEventsPage("limit=10&order=startDate&ascending=false", "new")
+      fetchEventsPage("limit=50&order=volume24hr&ascending=false", "trending"),
+      fetchEventsPage("limit=25&order=startDate&ascending=false", "new"),
+      fetchEventsPage("limit=40&order=volume24hr&ascending=false&tag_slug=politics", "category"),
+      fetchEventsPage("limit=40&order=volume24hr&ascending=false&tag_slug=crypto", "category"),
+      fetchEventsPage("limit=40&order=volume24hr&ascending=false&tag_slug=sports", "category"),
+      fetchEventsPage("limit=30&order=volume24hr&ascending=false&tag_slug=ai", "category"),
     ];
 
     const results = await Promise.all(fetches);
@@ -1173,123 +1174,71 @@ app.get("/api/prediction/tags", async (_req, res) => {
   }
 });
 
-// GET /api/prediction/chart — price history (range: 1h, 6h, 1d, 1w, 1m, all)
+// GET /api/prediction/chart — price history (writeup: token_id + interval + fidelity)
+// Query: yesTokenId, noTokenId, range = 1d | 1w | 1m | 3m | all
 app.get("/api/prediction/chart", async (req, res) => {
-  const { marketId, network, yesTokenId, noTokenId, range } = req.query;
+  const { network, yesTokenId, noTokenId, range } = req.query;
   try {
     if (network === "solana") {
-      return res.json([]);
-    } else {
-      if (!yesTokenId && !noTokenId) return res.json([]);
-
-      const now = Math.floor(Date.now() / 1000);
-      const rangeSpec = (r) => {
-        switch (String(r || "1w").toLowerCase()) {
-          case "1h": return { startTs: now - 3600, fidelity: 5 };
-          case "6h": return { startTs: now - 6 * 3600, fidelity: 15 };
-          case "1d": return { startTs: now - 86400, fidelity: 30 };
-          case "1w": return { startTs: now - 7 * 86400, fidelity: 60 };
-          case "1m": return { startTs: now - 30 * 86400, fidelity: 360 };
-          case "all": return { startTs: now - 365 * 86400, fidelity: 1440 };
-          default: return { startTs: now - 7 * 86400, fidelity: 60 };
-        }
-      };
-
-      const fetchHistory = async (tid) => {
-        if (!tid) return [];
-        const headers = { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36" };
-
-        const tryUrl = (url) => fetch(url, { headers }).then((r) => (r.ok ? r.json() : { history: [] }));
-
-        try {
-          const { startTs, fidelity } = rangeSpec(range);
-          // Try with market= (asset id)
-          let url = `${POLYMARKET_CLOB}/prices-history?market=${encodeURIComponent(tid)}&startTs=${startTs}&endTs=${now}&fidelity=${fidelity}`;
-          let data = await tryUrl(url);
-
-          // If empty, try with interval= (some CLOB versions prefer this)
-          if (!data.history || data.history.length === 0) {
-            const intervalMap = { "1h": "1h", "6h": "6h", "1d": "1d", "1w": "1w", "1m": "1m", "all": "max" };
-            const interval = intervalMap[String(range || "1w").toLowerCase()] || "1w";
-            url = `${POLYMARKET_CLOB}/prices-history?market=${encodeURIComponent(tid)}&interval=${interval}&fidelity=${fidelity}`;
-            data = await tryUrl(url);
-          }
-
-          // If still empty, try token_id= (some endpoints use this)
-          if (!data.history || data.history.length === 0) {
-            url = `${POLYMARKET_CLOB}/prices-history?token_id=${encodeURIComponent(tid)}&startTs=${startTs}&endTs=${now}&fidelity=${fidelity}`;
-            data = await tryUrl(url);
-          }
-
-          if (!data.history || data.history.length === 0) {
-            url = `${POLYMARKET_CLOB}/prices-history?market=${encodeURIComponent(tid)}&interval=max&fidelity=1440`;
-            data = await tryUrl(url);
-          }
-
-          // Only use order-book flat line if we truly have no history (avoid misleading flat 0% line)
-          if (!data.history || data.history.length === 0) {
-            const bookUrl = `${POLYMARKET_CLOB}/book?token_id=${encodeURIComponent(tid)}`;
-            const bookR = await fetch(bookUrl, { headers });
-            if (bookR.ok) {
-              const book = await bookR.json();
-              const bestBid = book.bids?.[0]?.price ? parseFloat(book.bids[0].price) : 0;
-              const bestAsk = book.asks?.[0]?.price ? parseFloat(book.asks[0].price) : 0;
-              if (bestBid > 0 || bestAsk > 0) {
-                const mid = (bestBid && bestAsk) ? (bestBid + bestAsk) / 2 : (bestBid || bestAsk);
-                const nowSec = Math.floor(Date.now() / 1000);
-                return [
-                  { time: nowSec - 86400 * 7, value: mid },
-                  { time: nowSec, value: mid }
-                ];
-              }
-            }
-            return [];
-          }
-
-          const history = data.history || [];
-          return history.map((p) => ({
-            time: p.t,
-            value: typeof p.p === "number" ? p.p : parseFloat(p.p) || 0
-          }));
-        } catch (e) {
-          console.error("Chart Error", e);
-          return [];
-        }
-      };
-
-      const fetchDepth = async (tid) => {
-        if (!tid) return { bids: [], asks: [] };
-        try {
-          const r = await fetch(`${POLYMARKET_CLOB}/book?market=${tid}`);
-          if (!r.ok) return { bids: [], asks: [] };
-          const book = await r.json();
-          // Normalize depth as cumulative
-          let bc = 0, ac = 0;
-          const bids = (book.bids || []).map(b => {
-            const amt = parseFloat(b.size);
-            bc += amt;
-            return { price: parseFloat(b.price), amount: amt, cumulative: bc };
-          });
-          const asks = (book.asks || []).map(a => {
-            const amt = parseFloat(a.size);
-            ac += amt;
-            return { price: parseFloat(a.price), amount: amt, cumulative: ac };
-          });
-          return { bids, asks };
-        } catch { return { bids: [], asks: [] }; }
-      };
-
-      const [yesHist, noHist, yesDepth] = await Promise.all([
-        fetchHistory(yesTokenId),
-        fetchHistory(noTokenId),
-        fetchDepth(yesTokenId)
-      ]);
-
-      res.json({ yes: yesHist, no: noHist, depth: yesDepth });
+      return res.json({ yes: [], no: [] });
     }
+    if (!yesTokenId && !noTokenId) return res.json({ yes: [], no: [] });
+
+    const headers = { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36" };
+
+    // Writeup: interval 1d/1w/1m/3m/all, fidelity 60 (hourly) for 1d/1w, 1440 (daily) for 1m/3m/all
+    const rangeToInterval = (r) => {
+      const s = String(r || "1w").toLowerCase();
+      if (["1d", "1w", "1m", "3m", "all"].includes(s)) return s;
+      if (s === "1h" || s === "6h") return "1d";
+      return "1w";
+    };
+    const interval = rangeToInterval(range);
+    const fidelity = (interval === "1d" || interval === "1w") ? 60 : 1440;
+    const clobInterval = interval === "all" ? "all" : interval;
+
+    const fetchHistory = async (tid) => {
+      if (!tid) return [];
+      try {
+        const url = `${POLYMARKET_CLOB}/prices-history?token_id=${encodeURIComponent(tid)}&interval=${clobInterval}&fidelity=${fidelity}`;
+        const r = await fetch(url, { headers });
+        const data = r.ok ? await r.json() : { history: [] };
+        let history = (data.history || []).sort((a, b) => (a.t || 0) - (b.t || 0));
+        if (history.length === 0) {
+          const bookUrl = `${POLYMARKET_CLOB}/book?token_id=${encodeURIComponent(tid)}`;
+          const bookR = await fetch(bookUrl, { headers });
+          if (bookR.ok) {
+            const book = await bookR.json();
+            const bestBid = book.bids?.[0]?.price ? parseFloat(book.bids[0].price) : 0;
+            const bestAsk = book.asks?.[0]?.price ? parseFloat(book.asks[0].price) : 0;
+            if (bestBid > 0 || bestAsk > 0) {
+              const mid = (bestBid && bestAsk) ? (bestBid + bestAsk) / 2 : (bestBid || bestAsk);
+              const nowSec = Math.floor(Date.now() / 1000);
+              history = [
+                { t: nowSec - 86400 * 7, p: mid },
+                { t: nowSec, p: mid }
+              ];
+            }
+          }
+        }
+        return history.map((p) => ({
+          time: p.t,
+          value: typeof p.p === "number" ? p.p : parseFloat(p.p) || 0
+        }));
+      } catch (e) {
+        console.error("Chart fetch error", e);
+        return [];
+      }
+      };
+
+    const [yesHist, noHist] = await Promise.all([
+      fetchHistory(yesTokenId),
+      fetchHistory(noTokenId)
+    ]);
+    res.json({ yes: yesHist, no: noHist });
   } catch (e) {
     console.error("Chart Error", e);
-    res.json([]);
+    res.json({ yes: [], no: [] });
   }
 });
 
