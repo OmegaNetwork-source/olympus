@@ -861,32 +861,44 @@ const BINANCE_MAPPING = {
   "jupiter-exchange-solana": "jupusdt", "raydium": "rayusdt",
   "pyth-network": "pythusdt", "pudgy-penguins": "penguusdt",
   "official-trump": "trumpusdt", "kamino": "kmnousdt",
-  "meteora": "metusdt", "lid-dao": "ldousdt", "curve-dao-token": "crvusdt",
+  "meteora": "metusdt", "lido-dao": "ldousdt", "curve-dao-token": "crvusdt",
   "the-sandbox": "sandusdt", "decentraland": "manausdt", "apecoin": "apeusdt",
   "blockstack": "stxusdt", "dai": "daiusdt", "usd-coin": "usdcusdt", "tether": "usdtusdt",
 };
 
-function useBinancePrice(cgId) {
+// Hook that tries mapping first, then falls back to direct SYMBOL+USDT
+function useBinancePrice(cgId, fallbackSymbol) {
   const [price, setPrice] = useState(null);
 
   useEffect(() => {
-    if (!cgId) { setPrice(null); return; }
-    const symbol = BINANCE_MAPPING[cgId];
+    let symbol = cgId ? BINANCE_MAPPING[cgId] : null;
+
+    // Fallback: if no mapping, valid ticker (e.g. "JUP") -> try JUPUSDT
+    if (!symbol && fallbackSymbol && typeof fallbackSymbol === "string" && fallbackSymbol.length >= 2) {
+      symbol = fallbackSymbol.toLowerCase() + "usdt";
+    }
+
     if (!symbol) { setPrice(null); return; }
 
     const ws = new WebSocket(`wss://stream.binance.com:9443/ws/${symbol}@trade`);
 
     ws.onmessage = (event) => {
-      const data = JSON.parse(event.data);
-      if (data && data.p) {
-        setPrice(parseFloat(data.p));
-      }
+      try {
+        const data = JSON.parse(event.data);
+        if (data && data.p) {
+          setPrice(parseFloat(data.p));
+        }
+      } catch (_) { }
+    };
+
+    ws.onerror = () => {
+      // If constructed symbol (e.g. TRUMPUSDT) doesn't exist, this might fail silently or close. available-check not easy via WS.
     };
 
     return () => {
       ws.close();
     };
-  }, [cgId]);
+  }, [cgId, fallbackSymbol]);
 
   return price;
 }
@@ -1290,7 +1302,8 @@ export default function OmegaDEX() {
   }, []);
 
   const activeCgId = zeroxPair ? ZEROX_COINGECKO_FALLBACK[zeroxPair.baseToken] : (nonEvmPair ? nonEvmPair.coingeckoId : null);
-  const liveBinancePrice = useBinancePrice(activeCgId);
+  const activeBaseToken = zeroxPair ? zeroxPair.baseToken : (nonEvmPair ? nonEvmPair.baseToken : null);
+  const liveBinancePrice = useBinancePrice(activeCgId, activeBaseToken);
 
   const loadData = useCallback(async () => {
     try {
