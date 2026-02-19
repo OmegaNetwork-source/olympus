@@ -1215,9 +1215,14 @@ export default function OmegaDEX() {
     if (typeof window === "undefined") return "";
     try {
       const params = new URLSearchParams(window.location.search);
-      const q = params.get("api");
+      let q = params.get("api");
+      // Forgive ?api-https://... (missing =) and treat rest as URL
+      if (!q && typeof window !== "undefined" && window.location.search) {
+        const m = window.location.search.match(/\?api-?(https?:\/\/[^\s&]+)/i);
+        if (m) q = m[1];
+      }
       if (q && (q.startsWith("http://") || q.startsWith("https://"))) {
-        const url = q.replace(/\/$/, "");
+        const url = q.replace(/\/$/, "").split("&")[0];
         try {
           localStorage.setItem("omega-api-url", url);
         } catch (_) {}
