@@ -875,11 +875,22 @@ function getBinanceSymbol(cgId, baseToken) {
   return symbol;
 }
 
+// Format price for display: use enough decimals for small-priced tokens (e.g. BONK ~0.000006) so they don't show as 0.0000
+function formatPriceForDisplay(price) {
+  const p = Number(price);
+  if (!Number.isFinite(p) || p <= 0) return "0.0000";
+  if (p >= 1) return p.toFixed(2);
+  if (p >= 0.01) return p.toFixed(4);
+  if (p >= 0.0001) return p.toFixed(6);
+  if (p >= 0.000001) return p.toFixed(8);
+  return p.toExponential(2);
+}
+
 // Always return a string for Current Price so the UI is never blank.
 function getCurrentPriceDisplay(orderBook, nonEvmPair, nonEvmPriceFailed) {
   if (nonEvmPair && (nonEvmPriceFailed || orderBook?.midPrice === 0)) return "\u2014"; // em dash
   const p = orderBook?.midPrice;
-  if (p != null && Number(p) > 0) return Number(p).toFixed(4);
+  if (p != null && Number(p) > 0) return formatPriceForDisplay(p);
   return "0.0000";
 }
 
@@ -1047,6 +1058,8 @@ export default function OmegaDEX() {
   const [formMode, setFormMode] = useState("pro");
   const [easyTab, setEasyTab] = useState("buy");
   const [nonEvmPriceFailed, setNonEvmPriceFailed] = useState(false);
+  const [marketStats, setMarketStats] = useState(null); // extended CoinGecko market data for zerox/nonEvm
+  const [showMarketInfoPopover, setShowMarketInfoPopover] = useState(false);
   const [balances, setBalances] = useState({});
   const [priceManuallyEdited, setPriceManuallyEdited] = useState(false);
   const [betAmount, setBetAmount] = useState("100");
@@ -1395,163 +1408,81 @@ export default function OmegaDEX() {
   }, []);
 
   const activeCgId = zeroxPair ? ZEROX_COINGECKO_FALLBACK[zeroxPair.baseToken] : (nonEvmPair ? nonEvmPair.coingeckoId : null);
-  const activeBaseToken = zeroxPair ? zeroxPair.baseToken : (nonEvmPair ? nonEvmPair.baseToken : null);
-  const liveBinancePrice = useBinancePrice(activeCgId, activeBaseToken);
+
+  // Market data (price + 24h vol, high, low, change %) — one call for header stats
+  const fetchMarketFromBackend = useCallback(async (cgId) => {
+    if (!cgId) return null;
+    const id = encodeURIComponent(cgId);
+    const urls = [];
+    if (typeof window !== "undefined" && /^https?:\/\/localhost(:\d+)?$|^https?:\/\/127\.0\.0\.1(:\d+)?$/i.test(window.location.origin))
+      urls.push(`/api/coingecko-market?id=${id}`);
+    if (API_BASE) urls.push(`${API_BASE.replace(/\/$/, "")}/api/coingecko-market?id=${id}`);
+    for (const url of urls) {
+      try {
+        const c = new AbortController();
+        const to = setTimeout(() => c.abort(), 12000);
+        const r = await fetch(url, { signal: c.signal });
+        clearTimeout(to);
+        if (!r.ok) continue;
+        const data = await r.json().catch(() => ({}));
+        const price = data?.price != null ? Number(data.price) : NaN;
+        if (!Number.isFinite(price) || price <= 0) continue;
+        const num = (v) => (v != null && Number.isFinite(Number(v)) ? Number(v) : null);
+        const str = (v) => (typeof v === "string" && v ? v : null);
+        return {
+          price,
+          volume24h: num(data?.volume24h),
+          high24h: num(data?.high24h),
+          low24h: num(data?.low24h),
+          changePercent24h: num(data?.changePercent24h),
+          marketCap: num(data?.marketCap),
+          marketCapRank: data?.marketCapRank != null ? Number(data.marketCapRank) : null,
+          ath: num(data?.ath),
+          athChangePercent: num(data?.athChangePercent),
+          athDate: str(data?.athDate),
+          atl: num(data?.atl),
+          atlChangePercent: num(data?.atlChangePercent),
+          atlDate: str(data?.atlDate),
+          circulatingSupply: num(data?.circulatingSupply),
+          totalSupply: num(data?.totalSupply),
+          maxSupply: num(data?.maxSupply),
+          fullyDilutedValuation: num(data?.fullyDilutedValuation),
+          lastUpdated: str(data?.lastUpdated),
+        };
+      } catch (_) { }
+    }
+    return null;
+  }, [API_BASE]);
+
+  // Single helper: try relative /api (Vite proxy → local API) then API_BASE so local dev works when API runs on 3001
+  const fetchPriceFromBackend = useCallback(async (cgId) => {
+    if (!cgId) return NaN;
+    const id = encodeURIComponent(cgId);
+    const urls = [];
+    if (typeof window !== "undefined" && /^https?:\/\/localhost(:\d+)?$|^https?:\/\/127\.0\.0\.1(:\d+)?$/i.test(window.location.origin))
+      urls.push(`/api/coingecko-price?id=${id}`);
+    if (API_BASE) urls.push(`${API_BASE.replace(/\/$/, "")}/api/coingecko-price?id=${id}`);
+    for (const url of urls) {
+      try {
+        const c = new AbortController();
+        const to = setTimeout(() => c.abort(), 12000);
+        const r = await fetch(url, { signal: c.signal });
+        clearTimeout(to);
+        if (!r.ok) continue;
+        const data = await r.json().catch(() => ({}));
+        const p = data?.price != null ? Number(data.price) : NaN;
+        if (Number.isFinite(p) && p > 0) return p;
+      } catch (_) { }
+    }
+    return NaN;
+  }, [API_BASE]);
 
   const loadData = useCallback(async () => {
     try {
+      // Zerox / nonEvm price is handled by the "fetch price on symbol change" effect — don't duplicate or race it here
+      if (zeroxPair || nonEvmPair) return;
       setApiError(null);
-      if (zeroxPair) {
-        let mid = 0;
-        // 1. Relayer first: /api/binance-price (Vite proxy → local API, or Vercel serverless) or API_BASE
-        if (chartPair?.tradingViewSymbol?.startsWith("BINANCE:")) {
-          const sym = chartPair.tradingViewSymbol.replace(/^BINANCE:/i, "");
-          const p = await fetchBinancePriceFromRelayer(sym, API_BASE);
-          if (p != null && p > 0) mid = p;
-          if (mid <= 0) {
-            const p2 = await fetchBinancePriceViaCorsProxy(sym);
-            if (p2 != null && p2 > 0) mid = p2;
-          }
-        }
-        // 2. Backend unified price (CoinGecko → CoinPaprika → Binance)
-        if (mid <= 0 && API_BASE) {
-          try {
-            const r = await fetch(`${API_BASE}/api/price?pairId=${encodeURIComponent(zeroxPair.id)}`);
-            if (r.ok) {
-              const d = await r.json().catch(() => ({}));
-              const p = d?.price != null ? Number(d.price) : NaN;
-              if (Number.isFinite(p) && p > 0) mid = p;
-            }
-          } catch (_) { }
-        }
-        const cgId = ZEROX_COINGECKO_FALLBACK[zeroxPair.baseToken];
-        if (cgId && mid <= 0) {
-          // 2. Prefer backend CoinGecko (reliable; no CORS)
-          if (API_BASE) {
-            try {
-              const r = await fetch(`${API_BASE}/api/coingecko-price?id=${encodeURIComponent(cgId)}`);
-              const data = r.ok ? await r.json().catch(() => ({})) : {};
-              const priceNum = data?.price != null ? Number(data.price) : NaN;
-              if (Number.isFinite(priceNum) && priceNum > 0) mid = priceNum;
-            } catch (_) { }
-          }
-          // 2. Live WebSocket price when available
-          if (liveBinancePrice && liveBinancePrice > 0) mid = liveBinancePrice;
-          // 3. Backend Binance proxy (no CORS); then client Binance REST as last resort
-          if (mid <= 0) {
-            const sym = getBinanceSymbol(cgId, zeroxPair.baseToken);
-            if (sym && API_BASE) {
-              try {
-                const r = await fetch(`${API_BASE}/api/binance-price?symbol=${encodeURIComponent(sym.toUpperCase())}`);
-                if (r.ok) {
-                  const d = await r.json().catch(() => ({}));
-                  const p = d?.price != null ? Number(d.price) : NaN;
-                  if (Number.isFinite(p) && p > 0) mid = p;
-                }
-              } catch (_) { }
-            }
-            if (mid <= 0) {
-              try {
-                if (sym) {
-                  const r = await fetch(`https://api.binance.com/api/v3/ticker/price?symbol=${sym.toUpperCase()}`);
-                  if (r.ok) { const d = await r.json(); mid = parseFloat(d.price); }
-                }
-              } catch (_) { }
-            }
-          }
-        }
-        // 0x is not used for price display — only for swaps (getQuote). Price = CoinGecko / Binance / CORS proxy only.
-        if (mid > 0) {
-          const spread = mid * 0.0005;
-          setOrderBook({
-            midPrice: mid,
-            asks: [{ price: mid + spread, amount: 100, total: 100 * (mid + spread) }],
-            bids: [{ price: mid - spread, amount: 100, total: 100 * (mid - spread) }],
-          });
-          setTrades([]);
-          setDepthData({
-            bids: [{ price: mid - spread, amount: 100, cumulative: 100 }],
-            asks: [{ price: mid + spread, amount: 100, cumulative: 100 }],
-          });
-        } else {
-          throw new Error("Price temporarily unavailable");
-        }
-      } else if (nonEvmPair) {
-        try {
-          // Relayer first (/api or API_BASE), then CORS proxy
-          const cgId = nonEvmPair.coingeckoId;
-          let priceNum = NaN;
-          if (chartPair?.tradingViewSymbol?.startsWith("BINANCE:")) {
-            const sym = chartPair.tradingViewSymbol.replace(/^BINANCE:/i, "");
-            const p = await fetchBinancePriceFromRelayer(sym, API_BASE);
-            if (p != null && p > 0) priceNum = p;
-            if (!Number.isFinite(priceNum) || priceNum <= 0) {
-              const p2 = await fetchBinancePriceViaCorsProxy(sym);
-              if (p2 != null && p2 > 0) priceNum = p2;
-            }
-          }
-          if (cgId) {
-            // Then CoinGecko, live Binance, backend Binance, client Binance
-            if ((!Number.isFinite(priceNum) || priceNum <= 0) && API_BASE) {
-              try {
-                const r = await fetch(`${API_BASE}/api/coingecko-price?id=${encodeURIComponent(cgId)}`);
-                const data = r.ok ? await r.json().catch(() => ({})) : {};
-                const p = data?.price != null ? Number(data.price) : NaN;
-                if (Number.isFinite(p) && p > 0) priceNum = p;
-              } catch (_) { }
-            }
-            if (liveBinancePrice && liveBinancePrice > 0) priceNum = liveBinancePrice;
-            if (!Number.isFinite(priceNum) || priceNum <= 0) {
-              const sym = getBinanceSymbol(cgId, nonEvmPair.baseToken);
-              if (sym && API_BASE) {
-                try {
-                  const r = await fetch(`${API_BASE}/api/binance-price?symbol=${encodeURIComponent(sym.toUpperCase())}`);
-                  if (r.ok) {
-                    const d = await r.json().catch(() => ({}));
-                    const p = d?.price != null ? Number(d.price) : NaN;
-                    if (Number.isFinite(p) && p > 0) priceNum = p;
-                  }
-                } catch (_) { }
-              }
-              if (!Number.isFinite(priceNum) || priceNum <= 0) {
-                try {
-                  if (sym) {
-                    const r = await fetch(`https://api.binance.com/api/v3/ticker/price?symbol=${sym.toUpperCase()}`);
-                    if (r.ok) { const d = await r.json(); priceNum = parseFloat(d.price); }
-                  }
-                } catch (_) { }
-              }
-            }
-          }
-          if (!Number.isFinite(priceNum) || priceNum < 0) {
-            const url = API_BASE ? `${API_BASE}/api/non-evm-price?pairId=${encodeURIComponent(nonEvmPair.id)}` : `/api/non-evm-price?pairId=${encodeURIComponent(nonEvmPair.id)}`;
-            const r = await fetch(url);
-            const data = r.ok ? await r.json().catch(() => ({})) : {};
-            priceNum = data?.price != null ? Number(data.price) : NaN;
-          }
-          const valid = Number.isFinite(priceNum) && priceNum >= 0;
-          setNonEvmPriceFailed(!valid);
-          if (valid) {
-            const mid = priceNum;
-            const spread = mid * 0.0005;
-            setOrderBook({
-              midPrice: mid,
-              asks: [{ price: mid + spread, amount: 100, total: 100 * (mid + spread) }],
-              bids: [{ price: mid - spread, amount: 100, total: 100 * (mid - spread) }],
-            });
-            setTrades([]);
-            setDepthData({
-              bids: [{ price: mid - spread, amount: 100, cumulative: 100 }],
-              asks: [{ price: mid + spread, amount: 100, cumulative: 100 }],
-            });
-          } else {
-            setOrderBook((prev) => (prev.midPrice > 0 ? prev : { asks: [], bids: [], midPrice: 0 }));
-          }
-        } catch (_) {
-          setNonEvmPriceFailed(true);
-          setOrderBook((prev) => (prev.midPrice > 0 ? prev : { asks: [], bids: [], midPrice: 0 }));
-        }
-      } else {
+      {
         const [ob, tr, dp] = await Promise.all([
           fetchOrderBook(selectedPair),
           fetchTrades(50, selectedPair),
@@ -1563,16 +1494,8 @@ export default function OmegaDEX() {
       }
     } catch (e) {
       setApiError(e.message || "Price temporarily unavailable");
-      // Don't wipe a valid price when a later loadData run fails (e.g. interval retry or liveBinancePrice deps) — avoids "works then stops"
-      if (zeroxPair) {
-        setOrderBook((prev) => (prev.midPrice > 0 ? prev : { asks: [], bids: [], midPrice: 0 }));
-        setDepthData((prev) => (prev?.bids?.length || prev?.asks?.length ? prev : { bids: [], asks: [] }));
-      } else if (nonEvmPair) {
-        setNonEvmPriceFailed(true);
-        setOrderBook((prev) => (prev.midPrice > 0 ? prev : { asks: [], bids: [], midPrice: 0 }));
-      }
     }
-  }, [selectedPair, zeroxPair, nonEvmPair, wallet.address, liveBinancePrice, API_BASE]);
+  }, [selectedPair, zeroxPair, nonEvmPair, wallet.address, API_BASE, fetchPriceFromBackend]);
 
   // Debounced version to avoid flooding API on rapid WS messages
   const loadDataTimerRef = useRef(null);
@@ -1584,53 +1507,174 @@ export default function OmegaDEX() {
     }, 150);
   }, [loadData]);
 
-  // When switching to a chart pair (zerox/nonEvm), clear stale price so we never show previous pair's value (e.g. PRE 0.13 as APT)
+  // Only clear price and market stats when the user actually switches to a different pair
+  const prevPairForPriceRef = useRef(selectedPair);
   useEffect(() => {
-    if (chartPair) setOrderBook((prev) => (prev.midPrice ? { ...prev, midPrice: 0 } : prev));
-  }, [selectedPair, chartPair]);
+    if (prevPairForPriceRef.current !== selectedPair) {
+      prevPairForPriceRef.current = selectedPair;
+      if (zeroxPair || nonEvmPair) {
+        setOrderBook((prev) => (prev.midPrice ? { ...prev, midPrice: 0 } : prev));
+        setMarketStats(null);
+      }
+    }
+  }, [selectedPair, zeroxPair, nonEvmPair]);
+
+  // Header price + 24h stats: when user selects a symbol (zerox or nonEvm), call market API and show price + vol/high/low
+  useEffect(() => {
+    const pair = zeroxPair || nonEvmPair;
+    if (!pair) return;
+    const cgId = zeroxPair ? ZEROX_COINGECKO_FALLBACK[zeroxPair.baseToken] : nonEvmPair?.coingeckoId;
+    if (!cgId) return;
+    let cancelled = false;
+    setApiError(null);
+    (async () => {
+      let market = await fetchMarketFromBackend(cgId);
+      if (cancelled) return;
+      if (!market?.price) {
+        const p = await fetchPriceFromBackend(cgId);
+        if (cancelled) return;
+        market = p != null && p > 0 ? { price: p, volume24h: null, high24h: null, low24h: null, changePercent24h: null } : null;
+      }
+      if (market?.price) {
+        const p = market.price;
+        const spread = p * 0.0005;
+        setOrderBook({
+          midPrice: p,
+          asks: [{ price: p + spread, amount: 100, total: 100 * (p + spread) }],
+          bids: [{ price: p - spread, amount: 100, total: 100 * (p - spread) }],
+        });
+        setTrades([]);
+        setDepthData({
+          bids: [{ price: p - spread, amount: 100, cumulative: 100 }],
+          asks: [{ price: p + spread, amount: 100, cumulative: 100 }],
+        });
+        setNonEvmPriceFailed(false);
+        setMarketStats({
+          volume24h: market.volume24h ?? null,
+          high24h: market.high24h ?? null,
+          low24h: market.low24h ?? null,
+          changePercent24h: market.changePercent24h ?? null,
+          marketCap: market.marketCap ?? null,
+          marketCapRank: market.marketCapRank ?? null,
+          ath: market.ath ?? null,
+          athChangePercent: market.athChangePercent ?? null,
+          athDate: market.athDate ?? null,
+          atl: market.atl ?? null,
+          atlChangePercent: market.atlChangePercent ?? null,
+          atlDate: market.atlDate ?? null,
+          circulatingSupply: market.circulatingSupply ?? null,
+          totalSupply: market.totalSupply ?? null,
+          maxSupply: market.maxSupply ?? null,
+          fullyDilutedValuation: market.fullyDilutedValuation ?? null,
+          lastUpdated: market.lastUpdated ?? null,
+        });
+      } else {
+        setApiError("Price temporarily unavailable");
+        setNonEvmPriceFailed(!!nonEvmPair);
+        setMarketStats(null);
+        setOrderBook((prev) => (prev.midPrice > 0 ? prev : { asks: [], bids: [], midPrice: 0 }));
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [selectedPair, zeroxPair, nonEvmPair, fetchPriceFromBackend, fetchMarketFromBackend]);
 
   useEffect(() => {
     loadData();
   }, [loadData, selectedPair]);
 
-  // When 0x + fallback both fail for a zerox pair, auto-retry a few times (helps with cold start / rate limits)
+  // When header price fails for zerox/nonEvm, auto-retry a few times (cold start / rate limits)
   const priceFeedRetryRef = useRef({ count: 0, timer: null });
   useEffect(() => {
-    if (!apiError || !zeroxPair) return;
-    const maxRetries = 3;
+    const pair = zeroxPair || nonEvmPair;
+    if (!apiError || !pair) return;
+    const cgId = zeroxPair ? ZEROX_COINGECKO_FALLBACK[zeroxPair.baseToken] : nonEvmPair?.coingeckoId;
+    if (!cgId) return;
+    const maxRetries = 5;
     if (priceFeedRetryRef.current.count >= maxRetries) return;
-    const t = setTimeout(() => {
+    const t = setTimeout(async () => {
       priceFeedRetryRef.current.count += 1;
-      loadData();
+      const p = await fetchPriceFromBackend(cgId);
+      if (Number.isFinite(p) && p > 0) {
+        const spread = p * 0.0005;
+        setOrderBook({
+          midPrice: p,
+          asks: [{ price: p + spread, amount: 100, total: 100 * (p + spread) }],
+          bids: [{ price: p - spread, amount: 100, total: 100 * (p - spread) }],
+        });
+        setDepthData({
+          bids: [{ price: p - spread, amount: 100, cumulative: 100 }],
+          asks: [{ price: p + spread, amount: 100, cumulative: 100 }],
+        });
+        setApiError(null);
+        setNonEvmPriceFailed(false);
+      }
     }, 4000);
     priceFeedRetryRef.current.timer = t;
     return () => clearTimeout(t);
-  }, [apiError, zeroxPair, loadData]);
-  // When we have a live Binance price, push it to orderBook and clear error so header/EZ Peeze show it even if loadData failed (e.g. backend down)
+  }, [apiError, zeroxPair, nonEvmPair, fetchPriceFromBackend]);
   useEffect(() => {
-    if (!(liveBinancePrice && liveBinancePrice > 0) || !(zeroxPair || nonEvmPair)) return;
-    const spread = liveBinancePrice * 0.0005;
-    setOrderBook({
-      midPrice: liveBinancePrice,
-      asks: [{ price: liveBinancePrice + spread, amount: 100, total: 100 * (liveBinancePrice + spread) }],
-      bids: [{ price: liveBinancePrice - spread, amount: 100, total: 100 * (liveBinancePrice - spread) }],
-    });
-    setApiError(null);
-  }, [liveBinancePrice, zeroxPair, nonEvmPair]);
-  // Also re-run loadData when live price arrives (may get CoinGecko/0x and full book)
-  useEffect(() => {
-    if (liveBinancePrice && liveBinancePrice > 0) loadData();
-  }, [liveBinancePrice]);
+    if (!zeroxPair && !nonEvmPair) priceFeedRetryRef.current = { count: 0, timer: null };
+  }, [selectedPair, zeroxPair, nonEvmPair]);
 
+  // Refresh header price + market stats every 15s for zerox/nonEvm
   useEffect(() => {
-    if (!zeroxPair) priceFeedRetryRef.current = { count: 0, timer: null };
-  }, [selectedPair, zeroxPair]);
-
-  useEffect(() => {
-    if (!nonEvmPair) return;
-    const t = setInterval(() => loadData(), 15000);
+    const pair = zeroxPair || nonEvmPair;
+    if (!pair) return;
+    const cgId = zeroxPair ? ZEROX_COINGECKO_FALLBACK[zeroxPair.baseToken] : nonEvmPair?.coingeckoId;
+    if (!cgId) return;
+    const t = setInterval(async () => {
+      const market = await fetchMarketFromBackend(cgId);
+      if (market?.price) {
+        const p = market.price;
+        const spread = p * 0.0005;
+        setOrderBook({
+          midPrice: p,
+          asks: [{ price: p + spread, amount: 100, total: 100 * (p + spread) }],
+          bids: [{ price: p - spread, amount: 100, total: 100 * (p - spread) }],
+        });
+        setDepthData({
+          bids: [{ price: p - spread, amount: 100, cumulative: 100 }],
+          asks: [{ price: p + spread, amount: 100, cumulative: 100 }],
+        });
+        setNonEvmPriceFailed(false);
+        setMarketStats({
+          volume24h: market.volume24h ?? null,
+          high24h: market.high24h ?? null,
+          low24h: market.low24h ?? null,
+          changePercent24h: market.changePercent24h ?? null,
+          marketCap: market.marketCap ?? null,
+          marketCapRank: market.marketCapRank ?? null,
+          ath: market.ath ?? null,
+          athChangePercent: market.athChangePercent ?? null,
+          athDate: market.athDate ?? null,
+          atl: market.atl ?? null,
+          atlChangePercent: market.atlChangePercent ?? null,
+          atlDate: market.atlDate ?? null,
+          circulatingSupply: market.circulatingSupply ?? null,
+          totalSupply: market.totalSupply ?? null,
+          maxSupply: market.maxSupply ?? null,
+          fullyDilutedValuation: market.fullyDilutedValuation ?? null,
+          lastUpdated: market.lastUpdated ?? null,
+        });
+      } else {
+        const p = await fetchPriceFromBackend(cgId);
+        if (Number.isFinite(p) && p > 0) {
+          const spread = p * 0.0005;
+          setOrderBook({
+            midPrice: p,
+            asks: [{ price: p + spread, amount: 100, total: 100 * (p + spread) }],
+            bids: [{ price: p - spread, amount: 100, total: 100 * (p - spread) }],
+          });
+          setDepthData({
+            bids: [{ price: p - spread, amount: 100, cumulative: 100 }],
+            asks: [{ price: p + spread, amount: 100, cumulative: 100 }],
+          });
+          setNonEvmPriceFailed(false);
+        }
+      }
+    }, 15000);
     return () => clearInterval(t);
-  }, [nonEvmPair, loadData]);
+  }, [selectedPair, zeroxPair, nonEvmPair, fetchPriceFromBackend, fetchMarketFromBackend]);
 
   useEffect(() => {
     if (!nonEvmPair) setNonEvmPriceFailed(false);
@@ -2656,39 +2700,142 @@ export default function OmegaDEX() {
                   ${getCurrentPriceDisplay(orderBook, nonEvmPair, nonEvmPriceFailed)}
                 </div>
 
-                {!isMobile && !isZeroXPair && (() => {
-                  const mid = orderBook.midPrice || 0.0847;
-                  // Update session-wide stats (accumulates across all ticks)
-                  const ss = sessionStats.current;
-                  if (!ss.initialized && mid > 0) {
-                    ss.high = mid; ss.low = mid; ss.startPrice = mid; ss.initialized = true;
-                  } else if (ss.initialized) {
-                    ss.high = Math.max(ss.high, mid);
-                    ss.low = Math.min(ss.low, mid);
+                {!isMobile && (() => {
+                  // Zerox/nonEvm: use CoinGecko market stats (24h vol, high, low, change %)
+                  if (isZeroXPair && marketStats) {
+                    const fmt = (v) => v != null && Number.isFinite(v) ? formatPriceForDisplay(v) : "—";
+                    const volStr = marketStats.volume24h != null && Number.isFinite(marketStats.volume24h)
+                      ? (marketStats.volume24h >= 1e9 ? `$${(marketStats.volume24h / 1e9).toFixed(2)}B` : marketStats.volume24h >= 1e6 ? `$${(marketStats.volume24h / 1e6).toFixed(1)}M` : marketStats.volume24h >= 1e3 ? `$${(marketStats.volume24h / 1e3).toFixed(0)}K` : `$${marketStats.volume24h.toFixed(0)}`)
+                      : "—";
+                    const chg = marketStats.changePercent24h;
+                    const chgStr = chg != null && Number.isFinite(chg) ? `${chg >= 0 ? "+" : ""}${chg.toFixed(2)}%` : "—";
+                    return [
+                      { label: "24h Chg", value: chgStr, color: chg != null && chg >= 0 ? t.glass.green : chg != null ? t.glass.red : t.glass.textSecondary },
+                      { label: "24h High", value: fmt(marketStats.high24h) },
+                      { label: "24h Low", value: fmt(marketStats.low24h) },
+                      { label: "24h Vol", value: volStr },
+                    ];
                   }
-                  // Also factor in trade prices
-                  trades.forEach(t => {
-                    if (t.price > 0) {
-                      ss.high = Math.max(ss.high, t.price);
-                      ss.low = Math.min(ss.low, t.price);
+                  // PRE / native pairs: session stats from orderbook + trades
+                  if (!isZeroXPair) {
+                    const mid = orderBook.midPrice || 0.0847;
+                    const ss = sessionStats.current;
+                    if (!ss.initialized && mid > 0) {
+                      ss.high = mid; ss.low = mid; ss.startPrice = mid; ss.initialized = true;
+                    } else if (ss.initialized) {
+                      ss.high = Math.max(ss.high, mid);
+                      ss.low = Math.min(ss.low, mid);
                     }
-                  });
-                  const changePercent = ss.startPrice > 0 ? ((mid - ss.startPrice) / ss.startPrice * 100) : 0;
-                  const totalVol = trades.reduce((s, t) => s + (t.amount || 0), 0);
-                  const totalVolUSD = trades.reduce((s, t) => s + (t.amount || 0) * (t.price || mid), 0);
-                  return [
-                    { label: "24h Change", value: `${changePercent >= 0 ? "+" : ""}${changePercent.toFixed(2)}%`, color: changePercent >= 0 ? t.glass.green : t.glass.red },
-                    { label: "24h High", value: ss.high.toFixed(4) },
-                    { label: "24h Low", value: ss.low.toFixed(4) },
-                    { label: "24h Vol", value: `${(totalVol / 1000).toFixed(1)}K ${selectedPair.split("/")[0] || "PRE"}` },
-                    { label: "24h Vol", value: `$${totalVolUSD >= 1000 ? (totalVolUSD / 1000).toFixed(1) + "K" : totalVolUSD.toFixed(0)}` },
-                  ];
+                    trades.forEach(t => {
+                      if (t.price > 0) {
+                        ss.high = Math.max(ss.high, t.price);
+                        ss.low = Math.min(ss.low, t.price);
+                      }
+                    });
+                    const changePercent = ss.startPrice > 0 ? ((mid - ss.startPrice) / ss.startPrice * 100) : 0;
+                    const totalVol = trades.reduce((s, t) => s + (t.amount || 0), 0);
+                    const totalVolUSD = trades.reduce((s, t) => s + (t.amount || 0) * (t.price || mid), 0);
+                    return [
+                      { label: "24h Change", value: `${changePercent >= 0 ? "+" : ""}${changePercent.toFixed(2)}%`, color: changePercent >= 0 ? t.glass.green : t.glass.red },
+                      { label: "24h High", value: ss.high.toFixed(4) },
+                      { label: "24h Low", value: ss.low.toFixed(4) },
+                      { label: "24h Vol", value: `$${totalVolUSD >= 1000 ? (totalVolUSD / 1000).toFixed(1) + "K" : totalVolUSD.toFixed(0)}` },
+                    ];
+                  }
+                  return [];
                 })().map((s, i) => (
                   <div key={i} className="dex-pair-bar-stats-item" style={{ borderLeft: "1px solid " + t.glass.border, paddingLeft: 16 }}>
                     <div style={{ fontSize: 9, color: t.glass.textTertiary, marginBottom: 2, letterSpacing: "0.02em" }}>{s.label}</div>
                     <div style={{ fontSize: 13, fontWeight: 600, color: s.color || t.glass.textSecondary, letterSpacing: "-0.01em" }}>{s.value}</div>
                   </div>
                 ))}
+                {!isMobile && isZeroXPair && marketStats && (
+                  <div style={{ position: "relative", display: "flex", alignItems: "center", borderLeft: "1px solid " + t.glass.border, paddingLeft: 12 }}>
+                    <button
+                      type="button"
+                      onClick={() => setShowMarketInfoPopover((v) => !v)}
+                      style={{
+                        width: 22,
+                        height: 22,
+                        borderRadius: "50%",
+                        border: "1px solid " + t.glass.border,
+                        background: "rgba(255,255,255,0.06)",
+                        color: t.glass.textTertiary,
+                        fontSize: 12,
+                        fontWeight: 700,
+                        cursor: "pointer",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        flexShrink: 0,
+                      }}
+                      title="More market data"
+                      aria-label="More market data"
+                    >
+                      i
+                    </button>
+                    {showMarketInfoPopover && createPortal(
+                      <div style={{ position: "fixed", inset: 0, zIndex: 100000, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+                        <div role="button" tabIndex={-1} style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.6)" }} onClick={() => setShowMarketInfoPopover(false)} aria-label="Close" />
+                        <div style={{
+                          position: "relative",
+                          zIndex: 1,
+                          minWidth: 280,
+                          maxWidth: "90vw",
+                          maxHeight: "85vh",
+                          overflow: "auto",
+                          padding: 16,
+                          background: t.panel.background,
+                          border: "1px solid " + t.glass.border,
+                          borderRadius: 12,
+                          boxShadow: "0 16px 48px rgba(0,0,0,0.5)",
+                          fontSize: 12,
+                        }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+                            <span style={{ color: t.glass.textTertiary, fontWeight: 600, letterSpacing: "0.04em" }}>MARKET DATA</span>
+                            <button type="button" onClick={() => setShowMarketInfoPopover(false)} style={{ background: "none", border: "none", color: t.glass.text, cursor: "pointer", fontSize: 18, lineHeight: 1 }}>×</button>
+                          </div>
+                          {(() => {
+                            const ms = marketStats || {};
+                            const hasExtended = ms.marketCap != null || ms.ath != null || ms.atl != null || ms.circulatingSupply != null;
+                            const fmtUsd = (v) => v == null || !Number.isFinite(v) ? "—" : v >= 1e9 ? `$${(v / 1e9).toFixed(2)}B` : v >= 1e6 ? `$${(v / 1e6).toFixed(1)}M` : v >= 1e3 ? `$${(v / 1e3).toFixed(0)}K` : `$${Number(v).toFixed(2)}`;
+                            const fmtNum = (v) => v == null || !Number.isFinite(v) ? "—" : v >= 1e9 ? `${(v / 1e9).toFixed(2)}B` : v >= 1e6 ? `${(v / 1e6).toFixed(1)}M` : v >= 1e3 ? `${(v / 1e3).toFixed(0)}K` : Number(v).toLocaleString();
+                            const fmtPct = (v) => v == null || !Number.isFinite(v) ? "—" : `${(v >= 0 ? "+" : "") + Number(v).toFixed(2)}%`;
+                            const row = (label, value) => (
+                              <div key={label} style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", borderBottom: "1px solid " + t.glass.border }}>
+                                <span style={{ color: t.glass.textTertiary }}>{label}</span>
+                                <span style={{ color: t.glass.text, fontWeight: 500 }}>{value}</span>
+                              </div>
+                            );
+                            const rows = [
+                              row("Market Cap", fmtUsd(ms.marketCap)),
+                              row("Market Cap Rank", ms.marketCapRank != null ? "#" + ms.marketCapRank : "—"),
+                              row("All-Time High", ms.ath != null ? `${fmtUsd(ms.ath)} ${ms.athChangePercent != null ? "(" + fmtPct(ms.athChangePercent) + ")" : ""}` : "—"),
+                              ms.athDate ? row("ATH Date", new Date(ms.athDate).toLocaleDateString()) : null,
+                              row("All-Time Low", ms.atl != null ? `${fmtUsd(ms.atl)} ${ms.atlChangePercent != null ? "(" + fmtPct(ms.atlChangePercent) + ")" : ""}` : "—"),
+                              ms.atlDate ? row("ATL Date", new Date(ms.atlDate).toLocaleDateString()) : null,
+                              row("Circulating Supply", fmtNum(ms.circulatingSupply)),
+                              ms.totalSupply != null ? row("Total Supply", fmtNum(ms.totalSupply)) : null,
+                              ms.maxSupply != null ? row("Max Supply", fmtNum(ms.maxSupply)) : null,
+                              row("Fully Diluted Val.", fmtUsd(ms.fullyDilutedValuation)),
+                              ms.lastUpdated ? row("Last Updated", new Date(ms.lastUpdated).toLocaleString()) : null,
+                            ].filter(Boolean);
+                            if (!hasExtended) {
+                              return (
+                                <div style={{ color: t.glass.textTertiary, padding: "12px 0" }}>
+                                  <p style={{ margin: 0, marginBottom: 8 }}>Restart the API server to load full market data (Market Cap, ATH, ATL, supply, etc.).</p>
+                                  <p style={{ margin: 0, fontSize: 11 }}>Stop and start <code style={{ background: "rgba(255,255,255,0.08)", padding: "2px 6px", borderRadius: 4 }}>npm run dev:api</code> so the updated /api/coingecko-market endpoint is used.</p>
+                                </div>
+                              );
+                            }
+                            return rows;
+                          })()}
+                        </div>
+                      </div>,
+                      document.body
+                    )}
+                  </div>
+                )}
                 <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 12 }}>
                   <button
                     type="button"
@@ -3385,6 +3532,77 @@ export default function OmegaDEX() {
             </div>
           )}
 
+          {/* Mobile: market info overlay when (i) tapped */}
+          {showMarketInfoPopover && isMobile && marketStats && createPortal(
+            <div
+              style={{
+                position: "fixed",
+                inset: 0,
+                background: "rgba(0,0,0,0.7)",
+                backdropFilter: "blur(6px)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                padding: 20,
+                zIndex: 100000,
+              }}
+              onClick={() => setShowMarketInfoPopover(false)}
+            >
+              <div
+                onClick={(e) => e.stopPropagation()}
+                style={{
+                  ...t.panel,
+                  maxWidth: 340,
+                  width: "100%",
+                  padding: 16,
+                  borderRadius: 16,
+                  border: "1px solid " + t.glass.border,
+                  boxShadow: "0 16px 48px rgba(0,0,0,0.4)",
+                }}
+              >
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+                  <span style={{ color: t.glass.textTertiary, fontWeight: 700, letterSpacing: "0.04em" }}>MARKET DATA</span>
+                  <button type="button" onClick={() => setShowMarketInfoPopover(false)} style={{ background: "none", border: "none", color: t.glass.text, cursor: "pointer", fontSize: 22, lineHeight: 1 }}>×</button>
+                </div>
+                {(() => {
+                  const ms = marketStats;
+                  const hasExtended = ms.marketCap != null || ms.ath != null || ms.atl != null || ms.circulatingSupply != null;
+                  const fmtUsd = (v) => v == null || !Number.isFinite(v) ? "—" : v >= 1e9 ? `$${(v / 1e9).toFixed(2)}B` : v >= 1e6 ? `$${(v / 1e6).toFixed(1)}M` : v >= 1e3 ? `$${(v / 1e3).toFixed(0)}K` : `$${Number(v).toFixed(2)}`;
+                  const fmtNum = (v) => v == null || !Number.isFinite(v) ? "—" : v >= 1e9 ? `${(v / 1e9).toFixed(2)}B` : v >= 1e6 ? `${(v / 1e6).toFixed(1)}M` : v >= 1e3 ? `${(v / 1e3).toFixed(0)}K` : Number(v).toLocaleString();
+                  const fmtPct = (v) => v == null || !Number.isFinite(v) ? "—" : `${(v >= 0 ? "+" : "") + Number(v).toFixed(2)}%`;
+                  const row = (label, value) => (
+                    <div key={label} style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", borderBottom: "1px solid " + t.glass.border }}>
+                      <span style={{ color: t.glass.textTertiary, fontSize: 12 }}>{label}</span>
+                      <span style={{ color: t.glass.text, fontWeight: 500, fontSize: 12 }}>{value}</span>
+                    </div>
+                  );
+                  if (!hasExtended) {
+                    return (
+                      <div style={{ color: t.glass.textTertiary, padding: "12px 0", fontSize: 12 }}>
+                        <p style={{ margin: 0, marginBottom: 8 }}>Restart the API server to load full market data.</p>
+                        <p style={{ margin: 0, fontSize: 11 }}>Stop and start <code style={{ background: "rgba(255,255,255,0.08)", padding: "2px 6px", borderRadius: 4 }}>npm run dev:api</code></p>
+                      </div>
+                    );
+                  }
+                  return [
+                    row("Market Cap", fmtUsd(ms.marketCap)),
+                    row("Market Cap Rank", ms.marketCapRank != null ? "#" + ms.marketCapRank : "—"),
+                    row("All-Time High", ms.ath != null ? `${fmtUsd(ms.ath)} ${ms.athChangePercent != null ? "(" + fmtPct(ms.athChangePercent) + ")" : ""}` : "—"),
+                    ms.athDate ? row("ATH Date", new Date(ms.athDate).toLocaleDateString()) : null,
+                    row("All-Time Low", ms.atl != null ? `${fmtUsd(ms.atl)} ${ms.atlChangePercent != null ? "(" + fmtPct(ms.atlChangePercent) + ")" : ""}` : "—"),
+                    ms.atlDate ? row("ATL Date", new Date(ms.atlDate).toLocaleDateString()) : null,
+                    row("Circulating Supply", fmtNum(ms.circulatingSupply)),
+                    ms.totalSupply != null ? row("Total Supply", fmtNum(ms.totalSupply)) : null,
+                    ms.maxSupply != null ? row("Max Supply", fmtNum(ms.maxSupply)) : null,
+                    row("Fully Diluted Val.", fmtUsd(ms.fullyDilutedValuation)),
+                    ms.lastUpdated ? row("Last Updated", new Date(ms.lastUpdated).toLocaleString()) : null,
+                  ].filter(Boolean);
+                })()}
+              </div>
+            </div>,
+            document.body
+          )}
+
           {/* 8 Ball popup */}
           {showEightBallPopup && (
             <div
@@ -3532,16 +3750,32 @@ export default function OmegaDEX() {
                   display: "flex", flexDirection: "column", gap: 0, padding: "8px 12px 24px",
                   minHeight: "calc(100vh - 100px)", paddingBottom: 24,
                 }}>
-                  {/* Compact stats row: 24h Change, High, Low, Vol */}
+                  {/* Compact stats row: 24h Change, High, Low, Vol (+ info (i) for zerox/nonEvm) */}
                   <div style={{
-                    display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8, padding: "12px 0 16px",
+                    display: "grid",
+                    gridTemplateColumns: isZeroXPair && marketStats ? "repeat(5, 1fr)" : "repeat(4, 1fr)",
+                    gap: 8,
+                    padding: "12px 0 16px",
                     borderBottom: "1px solid " + t.glass.border,
                   }}>
                     {(() => {
+                      if (isZeroXPair && marketStats) {
+                        const fmt = (v) => v != null && Number.isFinite(v) ? formatPriceForDisplay(v) : "—";
+                        const volStr = marketStats.volume24h != null && Number.isFinite(marketStats.volume24h)
+                          ? (marketStats.volume24h >= 1e6 ? `$${(marketStats.volume24h / 1e6).toFixed(1)}M` : marketStats.volume24h >= 1e3 ? `$${(marketStats.volume24h / 1e3).toFixed(0)}K` : `$${marketStats.volume24h.toFixed(0)}`)
+                          : "—";
+                        const chg = marketStats.changePercent24h;
+                        const chgStr = chg != null && Number.isFinite(chg) ? `${chg >= 0 ? "+" : ""}${chg.toFixed(2)}%` : "—";
+                        return [
+                          { label: "24h Chg", value: chgStr, color: chg != null && chg >= 0 ? t.glass.green : chg != null ? t.glass.red : t.glass.text },
+                          { label: "High", value: fmt(marketStats.high24h) },
+                          { label: "Low", value: fmt(marketStats.low24h) },
+                          { label: "Vol", value: volStr },
+                        ];
+                      }
                       const mid = orderBook.midPrice || 0.0847;
                       const ss = sessionStats.current;
                       const changePercent = ss.startPrice > 0 ? ((mid - ss.startPrice) / ss.startPrice * 100) : 0;
-                      const totalVol = trades.reduce((s, t) => s + (t.amount || 0), 0);
                       const totalVolUSD = trades.reduce((s, t) => s + (t.amount || 0) * (t.price || mid), 0);
                       return [
                         { label: "24h Chg", value: `${changePercent >= 0 ? "+" : ""}${changePercent.toFixed(2)}%`, color: changePercent >= 0 ? t.glass.green : t.glass.red },
@@ -3555,6 +3789,29 @@ export default function OmegaDEX() {
                         <div style={{ fontSize: 13, fontWeight: 700, color: s.color || t.glass.text }}>{s.value}</div>
                       </div>
                     ))}
+                    {isZeroXPair && marketStats && (
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
+                        <button
+                          type="button"
+                          onClick={() => setShowMarketInfoPopover(true)}
+                          style={{
+                            width: 24,
+                            height: 24,
+                            borderRadius: "50%",
+                            border: "1px solid " + t.glass.border,
+                            background: "rgba(255,255,255,0.06)",
+                            color: t.glass.textTertiary,
+                            fontSize: 12,
+                            fontWeight: 700,
+                            cursor: "pointer",
+                          }}
+                          title="More market data"
+                          aria-label="More market data"
+                        >
+                          i
+                        </button>
+                      </div>
+                    )}
                   </div>
 
                   {/* EZ Peeze — main action on mobile */}
@@ -3733,9 +3990,9 @@ export default function OmegaDEX() {
                             display: "flex", alignItems: "center", gap: 8,
                           }}>
                             <span style={{ fontSize: 15, fontWeight: 700, color: t.glass.green, fontFamily: "'SF Mono', monospace" }}>
-                              {orderBook.midPrice?.toFixed(4) ?? "0.0000"}
+                              {orderBook.midPrice != null && orderBook.midPrice > 0 ? formatPriceForDisplay(orderBook.midPrice) : "0.0000"}
                             </span>
-                            <span style={{ fontSize: 10, color: t.glass.textTertiary }}>≈ ${orderBook.midPrice?.toFixed(4) ?? "0.0000"}</span>
+                            <span style={{ fontSize: 10, color: t.glass.textTertiary }}>≈ ${orderBook.midPrice != null && orderBook.midPrice > 0 ? formatPriceForDisplay(orderBook.midPrice) : "0.0000"}</span>
                             <span style={{ fontSize: 9, color: t.glass.green, marginLeft: "auto" }}>▲</span>
                           </div>
 

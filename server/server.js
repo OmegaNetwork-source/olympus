@@ -425,8 +425,8 @@ async function fetchCoinPaprikaPrice(coinId) {
   }
 }
 
+// CoinGecko only — no Binance/other fallbacks so display stays consistent and avoids geo-block/cascading failures
 async function fetchCoingeckoPrice(id) {
-  // 1. Try CoinGecko
   try {
     const r = await fetch(
       `https://api.coingecko.com/api/v3/simple/price?ids=${encodeURIComponent(id)}&vs_currencies=usd`,
@@ -435,26 +435,74 @@ async function fetchCoingeckoPrice(id) {
     if (r.ok) {
       const data = await r.json();
       const price = data?.[id]?.usd;
-      if (typeof price === "number") return price;
+      if (typeof price === "number" && price > 0) return price;
     }
   } catch (e) {
     console.warn("[Price] CoinGecko failed for", id, e.message);
   }
-
-  // 2. Try Binance Fallback
-  const binanceSymbol = CG_TO_BINANCE[id];
-  if (binanceSymbol) {
-    try {
-      const price = await fetchBinancePrice(binanceSymbol);
-      if (price) {
-        console.log("[Price] Used Binance fallback for", id, price);
-        return price;
-      }
-    } catch (_) { }
-  }
-
   return null;
 }
+
+const coingeckoMarketCache = new Map();
+const COINGECKO_MARKET_CACHE_TTL_MS = 90 * 1000;
+
+async function fetchCoingeckoMarket(id) {
+  try {
+    const r = await fetch(
+      `https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=${encodeURIComponent(id)}&per_page=1`,
+      { headers: { Accept: "application/json", "User-Agent": "OmegaDEX/1.0" } }
+    );
+    if (!r.ok) return null;
+    const arr = await r.json();
+    const m = Array.isArray(arr) && arr[0] ? arr[0] : null;
+    if (!m) return null;
+    const price = m.current_price != null ? Number(m.current_price) : null;
+    const volume24h = m.total_volume != null ? Number(m.total_volume) : null;
+    const high24h = m.high_24h != null ? Number(m.high_24h) : null;
+    const low24h = m.low_24h != null ? Number(m.low_24h) : null;
+    const changePercent24h = m.price_change_percentage_24h != null ? Number(m.price_change_percentage_24h) : null;
+    const num = (x) => (x != null && Number.isFinite(Number(x)) ? Number(x) : null);
+    const str = (x) => (typeof x === "string" && x ? x : null);
+    return {
+      price: price > 0 ? price : null,
+      volume24h: num(volume24h),
+      high24h: num(high24h),
+      low24h: num(low24h),
+      changePercent24h: num(changePercent24h),
+      marketCap: num(m.market_cap),
+      marketCapRank: m.market_cap_rank != null ? Number(m.market_cap_rank) : null,
+      ath: num(m.ath),
+      athChangePercent: num(m.ath_change_percentage),
+      athDate: str(m.ath_date),
+      atl: num(m.atl),
+      atlChangePercent: num(m.atl_change_percentage),
+      atlDate: str(m.atl_date),
+      circulatingSupply: num(m.circulating_supply),
+      totalSupply: m.total_supply != null ? num(m.total_supply) : null,
+      maxSupply: m.max_supply != null ? num(m.max_supply) : null,
+      fullyDilutedValuation: num(m.fully_diluted_valuation),
+      lastUpdated: str(m.last_updated),
+    };
+  } catch (e) {
+    console.warn("[Price] CoinGecko market failed for", id, e.message);
+    return null;
+  }
+}
+
+app.get("/api/coingecko-market", async (req, res) => {
+  const id = (req.query.id || req.query.coingeckoId || "").trim().toLowerCase();
+  if (!id) return res.status(400).json({ error: "Missing id" });
+  const cached = coingeckoMarketCache.get(id);
+  if (cached && Date.now() - cached.ts < COINGECKO_MARKET_CACHE_TTL_MS) {
+    return res.json({ ...cached.data, id });
+  }
+  const data = await fetchCoingeckoMarket(id);
+  if (data) {
+    coingeckoMarketCache.set(id, { data, ts: Date.now() });
+    return res.json({ ...data, id });
+  }
+  return res.status(502).json({ error: "Market data unavailable", id });
+});
 
 app.get("/api/coingecko-price", async (req, res) => {
   const id = (req.query.id || req.query.coingeckoId || "").trim().toLowerCase();
