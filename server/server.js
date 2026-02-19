@@ -229,6 +229,123 @@ function broadcast(msg) {
 // ─── REST API ───
 
 // Pairs & token listing
+// 0x Swap API proxy (bypasses CORS; use when frontend gets "Failed to fetch")
+const ZEROX_KEY = process.env.VITE_0X_API_KEY || process.env.ZEROX_API_KEY || "";
+app.get("/api/zerox/price", async (req, res) => {
+  try {
+    const params = new URLSearchParams(req.query).toString();
+    const url = `https://api.0x.org/swap/allowance-holder/price?${params}`;
+    const headers = { "0x-version": "v2" };
+    if (ZEROX_KEY) headers["0x-api-key"] = ZEROX_KEY;
+    const r = await fetch(url, { headers });
+    const data = await r.json();
+    res.status(r.status).json(data);
+  } catch (e) {
+    res.status(502).json({ reason: e.message || "0x proxy error" });
+  }
+});
+
+app.get("/api/zerox/quote", async (req, res) => {
+  try {
+    const params = new URLSearchParams(req.query).toString();
+    const url = `https://api.0x.org/swap/allowance-holder/quote?${params}`;
+    const headers = { "0x-version": "v2" };
+    if (ZEROX_KEY) headers["0x-api-key"] = ZEROX_KEY;
+    const r = await fetch(url, { headers });
+    const data = await r.json();
+    res.status(r.status).json(data);
+  } catch (e) {
+    res.status(502).json({ reason: e.message || "0x proxy error" });
+  }
+});
+
+// Crypto news – Google News RSS search for " ticker crypto" (e.g. "ETH crypto")
+function parseGoogleNewsRss(xml) {
+  const items = [];
+  const itemRegex = /<item>([\s\S]*?)<\/item>/gi;
+  let m;
+  while ((m = itemRegex.exec(xml)) !== null) {
+    const block = m[1];
+    const titleMatch = block.match(/<title>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/title>/i);
+    let url = "";
+    const linkMatch = block.match(/<link>\s*([^<]+)\s*<\/link>/i);
+    if (linkMatch) url = linkMatch[1].trim();
+    if (!url) {
+      const hrefMatch = block.match(/https?:\/\/[^\s"'<>]+/);
+      if (hrefMatch) url = hrefMatch[0].replace(/[)\]>].*$/, "");
+    }
+    const pubMatch = block.match(/<pubDate>\s*([^<]+)\s*<\/pubDate>/i);
+    const sourceMatch = block.match(/<source[^>]*>([^<]+)<\/source>/i);
+    const rawTitle = titleMatch ? titleMatch[1].trim() : "";
+    const title = rawTitle
+      .replace(/&amp;/g, "&")
+      .replace(/&#39;/g, "'")
+      .replace(/&quot;/g, '"')
+      .replace(/&lt;/g, "<")
+      .replace(/&gt;/g, ">");
+    if (title && url) {
+      items.push({
+        title,
+        url,
+        publishedAt: pubMatch ? pubMatch[1].trim() : null,
+        source: sourceMatch ? sourceMatch[1].trim() : "Google News",
+      });
+    }
+  }
+  return items;
+}
+
+app.get("/api/crypto-news", async (req, res) => {
+  const ticker = (req.query.ticker || req.query.q || "").trim().toUpperCase();
+  const searchQuery = ticker ? `${ticker} crypto` : "crypto";
+  const searchUrl = `https://news.google.com/search?q=${encodeURIComponent(searchQuery)}`;
+  const items = [];
+  try {
+    const rssUrl = `https://news.google.com/rss/search?q=${encodeURIComponent(searchQuery)}&hl=en-US&gl=US&ceid=US:en`;
+    const r = await fetch(rssUrl, {
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        Accept: "application/rss+xml, application/xml, text/xml, */*",
+      },
+      redirect: "follow",
+    });
+    const xml = await r.text();
+    if (r.ok && xml && xml.includes("<item>")) {
+      const parsed = parseGoogleNewsRss(xml);
+      items.push(...parsed.slice(0, 25));
+    }
+    res.json({ items, searchUrl });
+  } catch (e) {
+    res.status(500).json({ items: [], searchUrl, error: e.message || "Failed to fetch news" });
+  }
+});
+
+// Generic news – Google News RSS search for any query (e.g. prediction event title)
+app.get("/api/news", async (req, res) => {
+  const q = (req.query.q || req.query.query || "").trim();
+  const searchQuery = q || "news";
+  const searchUrl = `https://news.google.com/search?q=${encodeURIComponent(searchQuery)}`;
+  const items = [];
+  try {
+    const rssUrl = `https://news.google.com/rss/search?q=${encodeURIComponent(searchQuery)}&hl=en-US&gl=US&ceid=US:en`;
+    const r = await fetch(rssUrl, {
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        Accept: "application/rss+xml, application/xml, text/xml, */*",
+      },
+      redirect: "follow",
+    });
+    const xml = await r.text();
+    if (r.ok && xml && xml.includes("<item>")) {
+      const parsed = parseGoogleNewsRss(xml);
+      items.push(...parsed.slice(0, 20));
+    }
+    res.json({ items, searchUrl, query: searchQuery });
+  } catch (e) {
+    res.status(500).json({ items: [], searchUrl, query: searchQuery, error: e.message || "Failed to fetch news" });
+  }
+});
+
 app.get("/api/pairs", (req, res) => {
   res.json(listedPairs);
 });
@@ -340,6 +457,122 @@ function saveEzBets() {
 }
 loadEzBets();
 
+// 0x pair config for EZ Peeze resolution: pairId -> { chainId, sellToken, buyToken, buyDecimals }
+const ZEROX_PAIRS = {
+  "ETH/USDC": { chainId: 1, sellToken: "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE", buyToken: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48", buyDecimals: 6 },
+  "ETH/USDT": { chainId: 1, sellToken: "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE", buyToken: "0xdAC17F958D2ee523a2206206994597C13D831ec7", buyDecimals: 6 },
+  "WBTC/USDC": { chainId: 1, sellToken: "0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599", buyToken: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48", buyDecimals: 6 },
+  "LINK/USDC": { chainId: 1, sellToken: "0x514910771AF9Ca656af840dff83E8264EcF986CA", buyToken: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48", buyDecimals: 6 },
+  "UNI/USDC": { chainId: 1, sellToken: "0x1f9840a85d5aF5bf1D1762F925BDADdC4201F984", buyToken: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48", buyDecimals: 6 },
+  "AAVE/USDC": { chainId: 1, sellToken: "0x7Fc66500c84A76Ad7e9c93437bFc5Ac33E2DDaE9", buyToken: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48", buyDecimals: 6 },
+  "CRV/USDC": { chainId: 1, sellToken: "0xD533a949740bb3306d119CC777fa900bA034cd52", buyToken: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48", buyDecimals: 6 },
+  "MATIC/USDC": { chainId: 1, sellToken: "0x7D1AfA7B718fb893dB30A3aBc0Cfc608AaCfeBB0", buyToken: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48", buyDecimals: 6 },
+  "ARB/USDC": { chainId: 1, sellToken: "0xB50721BCf8d664c30412Cfbc6cf7a15145234ad1", buyToken: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48", buyDecimals: 6 },
+  "LDO/USDC": { chainId: 1, sellToken: "0x5A98FcBEA516Cf06857215779Fd812CA3beF1B32", buyToken: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48", buyDecimals: 6 },
+  "PEPE/USDC": { chainId: 1, sellToken: "0x6982508145454Ce325dDbE47a25d4ec3d2311933", buyToken: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48", buyDecimals: 6 },
+  "SHIB/USDC": { chainId: 1, sellToken: "0x95aD61b0a150d79219dC64Ff2e44dA2d6b229F8E", buyToken: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48", buyDecimals: 6 },
+  "SAND/USDC": { chainId: 1, sellToken: "0x3845badAde8e6dFF049820680d1F14bD3903a5d0", buyToken: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48", buyDecimals: 6 },
+  "MANA/USDC": { chainId: 1, sellToken: "0x0F5D2fB29fb7d3CFeE444a200298f468908cC942", buyToken: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48", buyDecimals: 6 },
+  "FLOKI/USDC": { chainId: 1, sellToken: "0xcf0C122c6b73ff809C693DB761e7BaeBe62b6a2E", buyToken: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48", buyDecimals: 6 },
+  "BONK/USDC": { chainId: 1, sellToken: "0x1151CB3d861920e07a38e03eEAd12C32178567F6", buyToken: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48", buyDecimals: 6 },
+  "WIF/USDC": { chainId: 1, sellToken: "0x81B4dB0c719DB9bC7A8D8EbCF58CA2162BC53353", buyToken: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48", buyDecimals: 6 },
+  "RENDER/USDC": { chainId: 1, sellToken: "0x6De037ef9aD2725EB40118Bb1702EBb27e4Aeb24", buyToken: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48", buyDecimals: 6 },
+  "FET/USDC": { chainId: 1, sellToken: "0xaea46A60368A7bd060eec7DF8Cba43b7EF41ad85", buyToken: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48", buyDecimals: 6 },
+  "DOT/USDC": { chainId: 1, sellToken: "0x7083609fCE4d1d8Dc0C979AAb8c869Ea2C873402", buyToken: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48", buyDecimals: 6 },
+  "APT/USDC": { chainId: 1, sellToken: "0x42aD8AED9519efc6dC8B699d261A25cF79021596", buyToken: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48", buyDecimals: 6 },
+  "MATIC/USDC-POLY": { chainId: 137, sellToken: "0x0d500B1d8E8eF31E21C99d1Db9A6444d3ADf1270", buyToken: "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174", buyDecimals: 6 },
+  "ETH/USDC-POLY": { chainId: 137, sellToken: "0x7ceB23fD6bC0adD59E62ac25578270cFf1b9f619", buyToken: "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174", buyDecimals: 6 },
+  "ETH/USDC-ARB": { chainId: 42161, sellToken: "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE", buyToken: "0xaf88d065e77c8cC2239327C5EDb3A432268e5831", buyDecimals: 6 },
+  "ARB/USDC-ARB": { chainId: 42161, sellToken: "0x912CE59144191C1204E64559FE8253a0e49E6548", buyToken: "0xaf88d065e77c8cC2239327C5EDb3A432268e5831", buyDecimals: 6 },
+  "ETH/USDC-OP": { chainId: 10, sellToken: "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE", buyToken: "0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85", buyDecimals: 6 },
+  "OP/USDC-OP": { chainId: 10, sellToken: "0x4200000000000000000000000000000000000042", buyToken: "0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85", buyDecimals: 6 },
+  "ETH/USDC-BASE": { chainId: 8453, sellToken: "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE", buyToken: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", buyDecimals: 6 },
+  "DEGEN/USDC-BASE": { chainId: 8453, sellToken: "0x4ed4E862860beD51a9570b96d89aF5E1B0Efefed", buyToken: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", buyDecimals: 6 },
+  "BNB/USDT-BSC": { chainId: 56, sellToken: "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE", buyToken: "0x55d398326f99059fF775485246999027B3197955", buyDecimals: 18 },
+  "FLOKI/USDT-BSC": { chainId: 56, sellToken: "0xfb5B838b6cfEEdC2873aB27866079AC55363D37E", buyToken: "0x55d398326f99059fF775485246999027B3197955", buyDecimals: 18 },
+  "CAKE/USDT-BSC": { chainId: 56, sellToken: "0x0E09FaBB73Bd3Ade0a17ECC321fD13a19e81cE82", buyToken: "0x55d398326f99059fF775485246999027B3197955", buyDecimals: 18 },
+  "DOGE/USDT-BSC": { chainId: 56, sellToken: "0xbA2aE424d960c26247Dd6c32edC70B95c946FdFD", buyToken: "0x55d398326f99059fF775485246999027B3197955", buyDecimals: 18 },
+  "PEPE/USDT-BSC": { chainId: 56, sellToken: "0x25d887Ce7a35172C62FeBFD67a1856F20FaEbB00", buyToken: "0x55d398326f99059fF775485246999027B3197955", buyDecimals: 18 },
+  "SHIB/USDT-BSC": { chainId: 56, sellToken: "0x2859e4544C4Bb03966803b044A93563Bd2D0dd4D", buyToken: "0x55d398326f99059fF775485246999027B3197955", buyDecimals: 18 },
+  "AVAX/USDC-AVAX": { chainId: 43114, sellToken: "0xB31f66AA3C1e785363F0875A1B74E27b85FD66c7", buyToken: "0xB97EF9Ef8734C71904D8002F8b6Bc66Dd9c48a6E", buyDecimals: 6 },
+  "ETH/USDC-AVAX": { chainId: 43114, sellToken: "0x49D5c2BdFfac6CE2BFdB6640F4F80f226bc10bAB", buyToken: "0xB97EF9Ef8734C71904D8002F8b6Bc66Dd9c48a6E", buyDecimals: 6 },
+};
+
+// Non-EVM pairs: EZ Peeze only (no swap). Price from CoinGecko for resolution.
+const NON_EVM_PAIRS = {
+  "SOL/USDC": { coingeckoId: "solana" },
+  "BONK/USDC-SOL": { coingeckoId: "bonk" },
+  "JUP/USDC-SOL": { coingeckoId: "jupiter-exchange-solana" },
+  "RAY/USDC-SOL": { coingeckoId: "raydium" },
+  "PENGU/USDC-SOL": { coingeckoId: "pudgy-penguins" },
+  "TRUMP/USDC-SOL": { coingeckoId: "official-trump" },
+  "PYTH/USDC-SOL": { coingeckoId: "pyth-network" },
+  "MET/USDC-SOL": { coingeckoId: "meteora" },
+  "KMNO/USDC-SOL": { coingeckoId: "kamino" },
+  "BTC/USDC": { coingeckoId: "bitcoin" },
+  "ADA/USDC": { coingeckoId: "cardano" },
+  "XRP/USDC": { coingeckoId: "ripple" },
+  "DOGE/USDC": { coingeckoId: "dogecoin" },
+  "SUI/USDC": { coingeckoId: "sui" },
+  "TON/USDC": { coingeckoId: "the-open-network" },
+  "AVAX/USDC": { coingeckoId: "avalanche-2" },
+  "NEAR/USDC": { coingeckoId: "near" },
+  "INJ/USDC": { coingeckoId: "injective-protocol" },
+  "TIA/USDC": { coingeckoId: "celestia" },
+  "SEI/USDC": { coingeckoId: "sei-network" },
+  "STX/USDC": { coingeckoId: "blockstack" },
+};
+
+const nonEvmPriceCache = new Map(); // pairId -> { price, ts }
+const NON_EVM_PRICE_CACHE_TTL_MS = 60 * 1000;
+
+async function getNonEvmPrice(pairId) {
+  const cfg = NON_EVM_PAIRS[pairId];
+  if (!cfg?.coingeckoId) return null;
+  const cached = nonEvmPriceCache.get(pairId);
+  if (cached && Date.now() - cached.ts < NON_EVM_PRICE_CACHE_TTL_MS && cached.price != null) return cached.price;
+  try {
+    const r = await fetch(
+      `https://api.coingecko.com/api/v3/simple/price?ids=${encodeURIComponent(cfg.coingeckoId)}&vs_currencies=usd`,
+      { headers: { "Accept": "application/json", "User-Agent": "OmegaDEX/1.0" } }
+    );
+    const data = await r.json();
+    const price = data?.[cfg.coingeckoId]?.usd;
+    const result = typeof price === "number" ? price : null;
+    if (result != null) nonEvmPriceCache.set(pairId, { price: result, ts: Date.now() });
+    return result;
+  } catch (e) {
+    console.error("[EZ PEZE] getNonEvmPrice error:", e.message);
+    if (cached?.price != null) return cached.price;
+    return null;
+  }
+}
+
+async function getZeroxMidPrice(pairId) {
+  const cfg = ZEROX_PAIRS[pairId];
+  if (!cfg) return null;
+  const buyDecimals = cfg.buyDecimals ?? 6;
+  try {
+    const params = new URLSearchParams({
+      chainId: String(cfg.chainId),
+      sellToken: cfg.sellToken,
+      buyToken: cfg.buyToken,
+      sellAmount: "1000000000000000000",
+      taker: "0x0000000000000000000000000000000000000000",
+    });
+    const url = `https://api.0x.org/swap/allowance-holder/price?${params}`;
+    const headers = { "0x-version": "v2" };
+    if (ZEROX_KEY) headers["0x-api-key"] = ZEROX_KEY;
+    const r = await fetch(url, { headers });
+    const data = await r.json();
+    if (!r.ok || !data?.buyAmount) return null;
+    return parseFloat(ethers.formatUnits(data.buyAmount, buyDecimals));
+  } catch (e) {
+    console.error("[EZ PEZE] getZeroxMidPrice error:", e.message);
+    return null;
+  }
+}
+
 function getMidPrice(pairId) {
   const ob = getOrderBook(pairId);
   const bids = getSortedBids(ob);
@@ -395,14 +628,21 @@ async function payoutWinner(address, amountPre) {
 }
 
 // Resolution loop: every second, resolve due bets
-setInterval(() => {
+setInterval(async () => {
   const now = Date.now();
   for (const [id, bet] of ezBets) {
     if (bet.status !== "active") continue;
     const expiresAt = bet.placedAt + bet.timeframe * 1000;
     if (now < expiresAt) continue;
     const pairId = bet.pair || "PRE/mUSDC";
-    const exitPrice = getMidPrice(pairId);
+    let exitPrice = getMidPrice(pairId);
+    if (NON_EVM_PAIRS[pairId]) {
+      const nonEvmPrice = await getNonEvmPrice(pairId);
+      if (nonEvmPrice != null) exitPrice = nonEvmPrice;
+    } else if (ZEROX_PAIRS[pairId]) {
+      const zeroxPrice = await getZeroxMidPrice(pairId);
+      if (zeroxPrice != null) exitPrice = zeroxPrice;
+    }
     const priceUp = exitPrice > bet.entryPrice;
     const won = (bet.direction === "up" && priceUp) || (bet.direction === "down" && !priceUp);
     bet.status = won ? "won" : "lost";
@@ -436,7 +676,7 @@ app.get("/api/ezpeze/config", (req, res) => {
 });
 
 app.post("/api/ezpeze/bet", async (req, res) => {
-  const { address, amount, direction, timeframe, pair, txHash } = req.body;
+  const { address, amount, direction, timeframe, pair, txHash, entryPrice: reqEntryPrice } = req.body;
   if (!address || !amount || !direction || !txHash) {
     return res.status(400).json({ error: "Missing address, amount, direction, or txHash" });
   }
@@ -454,12 +694,20 @@ app.post("/api/ezpeze/bet", async (req, res) => {
     return res.status(400).json({ error: "Transfer verification failed. Ensure you sent the correct amount to the escrow." });
   }
   const pairId = pair || "PRE/mUSDC";
-  const ob = getOrderBook(pairId);
-  const bids = getSortedBids(ob);
-  const asks = getSortedAsks(ob);
-  const bestBid = bids[0]?.[0] ?? 0.0847;
-  const bestAsk = asks[0]?.[0] ?? 0.0847;
-  const entryPrice = (bestBid + bestAsk) / 2 || 0.0847;
+  let entryPrice = reqEntryPrice != null ? parseFloat(reqEntryPrice) : null;
+  if (entryPrice == null || isNaN(entryPrice)) {
+    if (NON_EVM_PAIRS[pairId]) {
+      const nonEvm = await getNonEvmPrice(pairId);
+      entryPrice = nonEvm != null ? nonEvm : 0;
+    } else {
+      const ob = getOrderBook(pairId);
+      const bids = getSortedBids(ob);
+      const asks = getSortedAsks(ob);
+      const bestBid = bids[0]?.[0] ?? 0.0847;
+      const bestAsk = asks[0]?.[0] ?? 0.0847;
+      entryPrice = (bestBid + bestAsk) / 2 || 0.0847;
+    }
+  }
   const bet = {
     id: uuidv4(),
     address: address.toLowerCase(),
@@ -484,6 +732,18 @@ app.get("/api/ezpeze/bets/:address", (req, res) => {
   const userBets = [...ezBets.values()].filter((b) => b.address === addr);
   userBets.sort((a, b) => (b.placedAt || 0) - (a.placedAt || 0));
   res.json(userBets);
+});
+
+app.get("/api/non-evm-price", async (req, res) => {
+  const pairId = (req.query.pairId || req.query.pair || "").trim();
+  if (!NON_EVM_PAIRS[pairId]) return res.status(400).json({ error: "Unknown non-EVM pair" });
+  try {
+    const price = await getNonEvmPrice(pairId);
+    if (price == null) return res.status(502).json({ error: "Price unavailable" });
+    res.json({ price });
+  } catch (e) {
+    res.status(500).json({ error: e.message || "Failed to fetch price" });
+  }
 });
 
 app.get("/api/orderbook", (req, res) => {
@@ -752,6 +1012,7 @@ function normalizeMarket(m) {
     closed: m.closed,
     endDate: m.endDate || m.end_date_iso || null,
     groupItemTitle: m.groupItemTitle || null,
+    image: m.image || m.imageUrl || m.groupItemImage || m.groupItemImageRemote || m.icon || null,
   };
 }
 
@@ -778,6 +1039,7 @@ function normalizeEvent(e) {
     numMarkets: markets.length,
     markets,
     url: e.slug ? `https://polymarket.com/event/${e.slug}` : null,
+    network: "polygon"
   };
 }
 
@@ -787,50 +1049,9 @@ app.get("/api/prediction/markets", async (req, res) => {
   try {
     const network = req.query.network || "solana"; // Default to Solana as requested
 
-    // ─── SOLANA (JUPITER) ───
-    if (network === "solana") {
-      if (singleTag) {
-        // Tag search
-        try {
-          const url = `${JUPITER_API}/events?category=${encodeURIComponent(singleTag)}&limit=40`;
-          const r = await fetch(url);
-          if (!r.ok) return res.json([]);
-          const data = await r.json();
-          const list = (data.data || []).map(e => { const n = normalizeJupiterEvent(e); n.section = "category"; return n; });
-          return res.json(list);
-        } catch (e) { return res.json([]); }
-      }
-
-      // Fan out for Solana
-      const fetchJup = async (params, section) => {
-        try {
-          const r = await fetch(`${JUPITER_API}/events?${params}`);
-          if (!r.ok) return [];
-          const d = await r.json();
-          return (d.data || []).map(e => { const n = normalizeJupiterEvent(e); n.section = section; return n; });
-        } catch { return []; }
-      };
-
-      const fetches = [
-        fetchJup("filter=trending&limit=50", "trending"),
-        fetchJup("filter=new&limit=40", "new"),
-        // Jupiter categories
-        ...["crypto", "politics", "sports", "tech", "finance"].map(tag =>
-          fetchJup(`category=${tag}&limit=20`, "category")
-        )
-      ];
-
-      const results = await Promise.all(fetches);
-      const flat = results.flat();
-      const seen = new Set();
-      const deduped = [];
-      for (const ev of flat) {
-        if (!ev.id || seen.has(ev.id)) continue;
-        seen.add(ev.id);
-        deduped.push(ev);
-      }
-      return res.json(deduped);
-    }
+    // ─── POLYMARKET ONLY ───
+    // Using Polymarket as the single source of truth for stability and charts.
+    // Solana/Jupiter fetch removed to prevent "fake data" and missing charts.
 
     // ─── POLYMARKET (EXISTING) ───
     // If a specific tag is requested, do a single fetch for that tag
@@ -867,17 +1088,10 @@ app.get("/api/prediction/markets", async (req, res) => {
     };
 
     // Fan out: trending, new, and per-tag fetches
+    // Simplified fetch: speed optimization
     const fetches = [
-      // Trending — top 100 by 24h volume
-      fetchEventsPage("limit=100&order=volume24hr&ascending=false", "trending"),
-      // New — most recently created/started
-      fetchEventsPage("limit=80&order=startDate&ascending=false", "new"),
-      // All-time volume for catching big markets not trending today
-      fetchEventsPage("limit=60&order=volume&ascending=false", "popular"),
-      // Per-tag deep fetches
-      ...POPULAR_TAGS.map((tag) =>
-        fetchEventsPage(`limit=40&order=volume24hr&ascending=false&tag_slug=${encodeURIComponent(tag)}`, "category")
-      ),
+      fetchEventsPage("limit=20&order=volume24hr&ascending=false", "trending"),
+      fetchEventsPage("limit=10&order=startDate&ascending=false", "new")
     ];
 
     const results = await Promise.all(fetches);
@@ -907,16 +1121,8 @@ app.get("/api/prediction/event/:slug", async (req, res) => {
   try {
     const network = req.query.network || "solana";
 
-    if (network === "solana") {
-      const url = `${JUPITER_API}/events/${encodeURIComponent(req.params.slug)}`;
-      const r = await fetch(url);
-      if (!r.ok) return res.status(404).json({ error: "Event not found" });
-      const d = await r.json();
-      const raw = d.data || d;
-      const event = Array.isArray(raw) ? raw[0] : raw;
-      if (!event) return res.status(404).json({ error: "Event not found" });
-      return res.json(normalizeJupiterEvent(event));
-    }
+    // POLYMARKET ONLY
+    // Removed Jupiter/Solana event lookup to ensure consistent data structure (tokens, etc)
 
     const r = await fetch(`${POLYMARKET_GAMMA}/events?slug=${encodeURIComponent(req.params.slug)}`);
     if (!r.ok) return res.status(r.status).json({ error: "Event not found" });
@@ -964,6 +1170,162 @@ app.get("/api/prediction/tags", async (_req, res) => {
     res.json(await r.json());
   } catch (err) {
     res.status(500).json({ error: "Failed to fetch tags" });
+  }
+});
+
+// GET /api/prediction/chart — price history (range: 1h, 6h, 1d, 1w, 1m, all)
+app.get("/api/prediction/chart", async (req, res) => {
+  const { marketId, network, yesTokenId, noTokenId, range } = req.query;
+  try {
+    if (network === "solana") {
+      return res.json([]);
+    } else {
+      if (!yesTokenId && !noTokenId) return res.json([]);
+
+      const now = Math.floor(Date.now() / 1000);
+      const rangeSpec = (r) => {
+        switch (String(r || "1w").toLowerCase()) {
+          case "1h": return { startTs: now - 3600, fidelity: 5 };
+          case "6h": return { startTs: now - 6 * 3600, fidelity: 15 };
+          case "1d": return { startTs: now - 86400, fidelity: 30 };
+          case "1w": return { startTs: now - 7 * 86400, fidelity: 60 };
+          case "1m": return { startTs: now - 30 * 86400, fidelity: 360 };
+          case "all": return { startTs: now - 365 * 86400, fidelity: 1440 };
+          default: return { startTs: now - 7 * 86400, fidelity: 60 };
+        }
+      };
+
+      const fetchHistory = async (tid) => {
+        if (!tid) return [];
+        const headers = { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36" };
+
+        const tryUrl = (url) => fetch(url, { headers }).then((r) => (r.ok ? r.json() : { history: [] }));
+
+        try {
+          const { startTs, fidelity } = rangeSpec(range);
+          // Try with market= (asset id)
+          let url = `${POLYMARKET_CLOB}/prices-history?market=${encodeURIComponent(tid)}&startTs=${startTs}&endTs=${now}&fidelity=${fidelity}`;
+          let data = await tryUrl(url);
+
+          // If empty, try with interval= (some CLOB versions prefer this)
+          if (!data.history || data.history.length === 0) {
+            const intervalMap = { "1h": "1h", "6h": "6h", "1d": "1d", "1w": "1w", "1m": "1m", "all": "max" };
+            const interval = intervalMap[String(range || "1w").toLowerCase()] || "1w";
+            url = `${POLYMARKET_CLOB}/prices-history?market=${encodeURIComponent(tid)}&interval=${interval}&fidelity=${fidelity}`;
+            data = await tryUrl(url);
+          }
+
+          // If still empty, try token_id= (some endpoints use this)
+          if (!data.history || data.history.length === 0) {
+            url = `${POLYMARKET_CLOB}/prices-history?token_id=${encodeURIComponent(tid)}&startTs=${startTs}&endTs=${now}&fidelity=${fidelity}`;
+            data = await tryUrl(url);
+          }
+
+          if (!data.history || data.history.length === 0) {
+            url = `${POLYMARKET_CLOB}/prices-history?market=${encodeURIComponent(tid)}&interval=max&fidelity=1440`;
+            data = await tryUrl(url);
+          }
+
+          // Only use order-book flat line if we truly have no history (avoid misleading flat 0% line)
+          if (!data.history || data.history.length === 0) {
+            const bookUrl = `${POLYMARKET_CLOB}/book?token_id=${encodeURIComponent(tid)}`;
+            const bookR = await fetch(bookUrl, { headers });
+            if (bookR.ok) {
+              const book = await bookR.json();
+              const bestBid = book.bids?.[0]?.price ? parseFloat(book.bids[0].price) : 0;
+              const bestAsk = book.asks?.[0]?.price ? parseFloat(book.asks[0].price) : 0;
+              if (bestBid > 0 || bestAsk > 0) {
+                const mid = (bestBid && bestAsk) ? (bestBid + bestAsk) / 2 : (bestBid || bestAsk);
+                const nowSec = Math.floor(Date.now() / 1000);
+                return [
+                  { time: nowSec - 86400 * 7, value: mid },
+                  { time: nowSec, value: mid }
+                ];
+              }
+            }
+            return [];
+          }
+
+          const history = data.history || [];
+          return history.map((p) => ({
+            time: p.t,
+            value: typeof p.p === "number" ? p.p : parseFloat(p.p) || 0
+          }));
+        } catch (e) {
+          console.error("Chart Error", e);
+          return [];
+        }
+      };
+
+      const fetchDepth = async (tid) => {
+        if (!tid) return { bids: [], asks: [] };
+        try {
+          const r = await fetch(`${POLYMARKET_CLOB}/book?market=${tid}`);
+          if (!r.ok) return { bids: [], asks: [] };
+          const book = await r.json();
+          // Normalize depth as cumulative
+          let bc = 0, ac = 0;
+          const bids = (book.bids || []).map(b => {
+            const amt = parseFloat(b.size);
+            bc += amt;
+            return { price: parseFloat(b.price), amount: amt, cumulative: bc };
+          });
+          const asks = (book.asks || []).map(a => {
+            const amt = parseFloat(a.size);
+            ac += amt;
+            return { price: parseFloat(a.price), amount: amt, cumulative: ac };
+          });
+          return { bids, asks };
+        } catch { return { bids: [], asks: [] }; }
+      };
+
+      const [yesHist, noHist, yesDepth] = await Promise.all([
+        fetchHistory(yesTokenId),
+        fetchHistory(noTokenId),
+        fetchDepth(yesTokenId)
+      ]);
+
+      res.json({ yes: yesHist, no: noHist, depth: yesDepth });
+    }
+  } catch (e) {
+    console.error("Chart Error", e);
+    res.json([]);
+  }
+});
+
+// GET /api/prediction/activity — recent trades
+app.get("/api/prediction/activity", async (req, res) => {
+  const { marketId, network, yesTokenId, noTokenId } = req.query;
+  try {
+    // POLYMARKET (CLOB)
+    // Fetch trades for YES and NO tokens
+    const fetchTokenTrades = async (tid, side) => {
+      if (!tid) return [];
+      try {
+        const r = await fetch(`${POLYMARKET_CLOB}/trades?market=${tid}`);
+        if (!r.ok) return [];
+        const d = await r.json();
+        return (Array.isArray(d) ? d : []).map(t => ({
+          id: t.match_id || t.timestamp,
+          type: t.side, // buy/sell
+          side: side,
+          amount: parseFloat(t.size).toFixed(2),
+          price: parseFloat(t.price).toFixed(2),
+          time: new Date(Number(t.timestamp) * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          address: t.maker_address ? (t.maker_address.slice(0, 4) + "..." + t.maker_address.slice(-4)) : "0x..."
+        }));
+      } catch { return []; }
+    };
+
+    const [yesTrades, noTrades] = await Promise.all([
+      fetchTokenTrades(yesTokenId, "yes"),
+      fetchTokenTrades(noTokenId, "no")
+    ]);
+    const all = [...yesTrades, ...noTrades].sort((a, b) => b.time < a.time ? -1 : 1).slice(0, 20);
+    return res.json(all);
+  } catch (err) {
+    console.error("Activity fetch error", err);
+    res.json([]);
   }
 });
 
