@@ -1178,12 +1178,12 @@ export default function OmegaDEX() {
     const filtered = !pairSearchLower
       ? [...list]
       : list.filter((p) => {
-          const id = (p.id || "").toLowerCase();
-          const base = (p.baseToken || "").toLowerCase();
-          const quote = (p.quoteToken || "").toLowerCase();
-          const combined = `${base} ${quote} ${base}/${quote}`;
-          return id.includes(pairSearchLower) || base.includes(pairSearchLower) || quote.includes(pairSearchLower) || combined.includes(pairSearchLower);
-        });
+        const id = (p.id || "").toLowerCase();
+        const base = (p.baseToken || "").toLowerCase();
+        const quote = (p.quoteToken || "").toLowerCase();
+        const combined = `${base} ${quote} ${base}/${quote}`;
+        return id.includes(pairSearchLower) || base.includes(pairSearchLower) || quote.includes(pairSearchLower) || combined.includes(pairSearchLower);
+      });
     // Favorites first, then alphabetical by base/quote (e.g. "AAVE/USDC" before "ARB/USDC")
     const favSet = new Set(favoritePairIds);
     const sortKey = (p) => `${(p.baseToken || "").toLowerCase()}/${(p.quoteToken || "").toLowerCase()}`;
@@ -1203,14 +1203,14 @@ export default function OmegaDEX() {
       const next = prev.includes(pairId) ? prev.filter((id) => id !== pairId) : [...prev, pairId];
       try {
         localStorage.setItem("omega-favorite-pairs", JSON.stringify(next));
-      } catch (_) {}
+      } catch (_) { }
       return next;
     });
   }, []);
 
   // API base: env (build-time) or ?api=... or localStorage omega-api-url (so prod works even if VITE_API_URL wasn't set)
   const API_BASE = useMemo(() => {
-    const env = (import.meta.env.VITE_API_URL || import.meta.env.VITE_API_BASE || "").trim();
+    const env = (import.meta.env.VITE_API_URL || import.meta.env.VITE_API_BASE || "https://olympus-api-n3xm.onrender.com").trim();
     if (env) return env.replace(/\/$/, "");
     if (typeof window === "undefined") return "";
     try {
@@ -1225,13 +1225,13 @@ export default function OmegaDEX() {
         const url = q.replace(/\/$/, "").split("&")[0];
         try {
           localStorage.setItem("omega-api-url", url);
-        } catch (_) {}
+        } catch (_) { }
         return url;
       }
       const stored = localStorage.getItem("omega-api-url");
       if (stored && (stored.startsWith("http://") || stored.startsWith("https://"))) return stored.replace(/\/$/, "");
-    } catch (_) {}
-    return "";
+    } catch (_) { }
+    return "https://olympus-api-n3xm.onrender.com";
   }, []);
 
   const loadData = useCallback(async () => {
@@ -1247,7 +1247,7 @@ export default function OmegaDEX() {
             const data = r.ok ? await r.json().catch(() => ({})) : {};
             const priceNum = data?.price != null ? Number(data.price) : NaN;
             if (Number.isFinite(priceNum) && priceNum > 0) mid = priceNum;
-          } catch (_) {}
+          } catch (_) { }
         }
         if (mid <= 0) {
           try {
@@ -1269,7 +1269,7 @@ export default function OmegaDEX() {
                 const data = r.ok ? await r.json().catch(() => ({})) : {};
                 const priceNum = data?.price != null ? Number(data.price) : NaN;
                 if (Number.isFinite(priceNum) && priceNum > 0) mid = priceNum;
-              } catch (_) {}
+              } catch (_) { }
             }
             if (mid <= 0) throw zeroxErr;
           }
@@ -1299,7 +1299,7 @@ export default function OmegaDEX() {
               const r = await fetch(`${API_BASE}/api/coingecko-price?id=${encodeURIComponent(cgId)}`);
               const data = r.ok ? await r.json().catch(() => ({})) : {};
               priceNum = data?.price != null ? Number(data.price) : NaN;
-            } catch (_) {}
+            } catch (_) { }
           }
           if (!Number.isFinite(priceNum) || priceNum < 0) {
             const url = API_BASE ? `${API_BASE}/api/non-evm-price?pairId=${encodeURIComponent(nonEvmPair.id)}` : `/api/non-evm-price?pairId=${encodeURIComponent(nonEvmPair.id)}`;
@@ -2594,134 +2594,134 @@ export default function OmegaDEX() {
 
                             {/* Outcomes list */}
                             {ev.markets?.length > 0 && (
-                                <div style={{ marginBottom: 28 }}>
-                                  <div style={{ display: "flex", flexDirection: "column", gap: 0, borderRadius: 12, overflow: "hidden", border: "1px solid " + t.glass.border }}>
-                                    {ev.markets?.map((mk, i) => {
-                                      const active = isSelected(mk);
-                                      const yesPct = mk.yesPrice ? Math.round(mk.yesPrice * 100) : 0;
-                                      const fmtP = (p) => p != null ? (p * 100).toFixed(1) + "¢" : "—";
-                                      return (
-                                        <div key={i}
-                                          onClick={() => {
-                                            setPredictionBetMarket({ ...ev, ...mk, title: ev.title + " — " + (mk.groupItemTitle || mk.question || "Outcome") });
-                                            setPredictionBetSide("yes");
-                                            setPredictionBetPrice(mk.yesPrice ? String(mk.yesPrice.toFixed(2)) : "0.50");
-                                            setPredictionOrderError(null);
-                                          }}
-                                          style={{
-                                            display: "flex", alignItems: "center", padding: "12px 16px", cursor: "pointer",
-                                            background: active ? (theme === "dark" ? "rgba(255,255,255,0.06)" : "rgba(255,255,255,0.7)") : (theme === "dark" ? "rgba(255,255,255,0.02)" : "rgba(255,255,255,0.4)"),
-                                            borderBottom: i < (ev.markets?.length || 0) - 1 ? "1px solid " + t.glass.border : "none",
-                                            transition: "background 0.15s"
-                                          }}
-                                        >
-                                          <div style={{ flex: 1, fontWeight: 600, color: t.glass.text, fontSize: 13 }}>{mk.groupItemTitle || mk.question || "Outcome"}</div>
-                                          <div style={{ fontSize: 12, fontWeight: 700, color: t.glass.text, minWidth: 32, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{yesPct < 0.5 ? "<1%" : yesPct >= 99.5 ? "100%" : yesPct + "%"}</div>
-                                          <div style={{ display: "flex", gap: 6, marginLeft: 12 }}>
-                                            <button onClick={(e) => { e.stopPropagation(); setPredictionBetMarket({ ...ev, ...mk, title: ev.title + " — " + (mk.groupItemTitle || mk.question || "Outcome") }); setPredictionBetSide("yes"); setPredictionBetPrice(mk.yesPrice ? String(mk.yesPrice.toFixed(2)) : "0.50"); }} style={{ padding: "5px 10px", borderRadius: 6, border: "none", cursor: "pointer", background: "rgba(34,197,94,0.18)", color: "#22c55e", fontSize: 11, fontWeight: 700 }}>Yes {fmtP(mk.yesPrice)}</button>
-                                            <button onClick={(e) => { e.stopPropagation(); setPredictionBetMarket({ ...ev, ...mk, title: ev.title + " — " + (mk.groupItemTitle || mk.question || "Outcome") }); setPredictionBetSide("no"); setPredictionBetPrice(mk.noPrice ? String(mk.noPrice.toFixed(2)) : "0.50"); }} style={{ padding: "5px 10px", borderRadius: 6, border: "none", cursor: "pointer", background: "rgba(239,68,68,0.18)", color: "#ef4444", fontSize: 11, fontWeight: 700 }}>No {fmtP(mk.noPrice)}</button>
-                                          </div>
+                              <div style={{ marginBottom: 28 }}>
+                                <div style={{ display: "flex", flexDirection: "column", gap: 0, borderRadius: 12, overflow: "hidden", border: "1px solid " + t.glass.border }}>
+                                  {ev.markets?.map((mk, i) => {
+                                    const active = isSelected(mk);
+                                    const yesPct = mk.yesPrice ? Math.round(mk.yesPrice * 100) : 0;
+                                    const fmtP = (p) => p != null ? (p * 100).toFixed(1) + "¢" : "—";
+                                    return (
+                                      <div key={i}
+                                        onClick={() => {
+                                          setPredictionBetMarket({ ...ev, ...mk, title: ev.title + " — " + (mk.groupItemTitle || mk.question || "Outcome") });
+                                          setPredictionBetSide("yes");
+                                          setPredictionBetPrice(mk.yesPrice ? String(mk.yesPrice.toFixed(2)) : "0.50");
+                                          setPredictionOrderError(null);
+                                        }}
+                                        style={{
+                                          display: "flex", alignItems: "center", padding: "12px 16px", cursor: "pointer",
+                                          background: active ? (theme === "dark" ? "rgba(255,255,255,0.06)" : "rgba(255,255,255,0.7)") : (theme === "dark" ? "rgba(255,255,255,0.02)" : "rgba(255,255,255,0.4)"),
+                                          borderBottom: i < (ev.markets?.length || 0) - 1 ? "1px solid " + t.glass.border : "none",
+                                          transition: "background 0.15s"
+                                        }}
+                                      >
+                                        <div style={{ flex: 1, fontWeight: 600, color: t.glass.text, fontSize: 13 }}>{mk.groupItemTitle || mk.question || "Outcome"}</div>
+                                        <div style={{ fontSize: 12, fontWeight: 700, color: t.glass.text, minWidth: 32, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{yesPct < 0.5 ? "<1%" : yesPct >= 99.5 ? "100%" : yesPct + "%"}</div>
+                                        <div style={{ display: "flex", gap: 6, marginLeft: 12 }}>
+                                          <button onClick={(e) => { e.stopPropagation(); setPredictionBetMarket({ ...ev, ...mk, title: ev.title + " — " + (mk.groupItemTitle || mk.question || "Outcome") }); setPredictionBetSide("yes"); setPredictionBetPrice(mk.yesPrice ? String(mk.yesPrice.toFixed(2)) : "0.50"); }} style={{ padding: "5px 10px", borderRadius: 6, border: "none", cursor: "pointer", background: "rgba(34,197,94,0.18)", color: "#22c55e", fontSize: 11, fontWeight: 700 }}>Yes {fmtP(mk.yesPrice)}</button>
+                                          <button onClick={(e) => { e.stopPropagation(); setPredictionBetMarket({ ...ev, ...mk, title: ev.title + " — " + (mk.groupItemTitle || mk.question || "Outcome") }); setPredictionBetSide("no"); setPredictionBetPrice(mk.noPrice ? String(mk.noPrice.toFixed(2)) : "0.50"); }} style={{ padding: "5px 10px", borderRadius: 6, border: "none", cursor: "pointer", background: "rgba(239,68,68,0.18)", color: "#ef4444", fontSize: 11, fontWeight: 700 }}>No {fmtP(mk.noPrice)}</button>
                                         </div>
-                                      );
-                                    })}
-                                  </div>
+                                      </div>
+                                    );
+                                  })}
                                 </div>
+                              </div>
                             )}
                           </div>
                         </div>
                         <div style={rightPanelStyle}>
                           <div style={{ flexShrink: 0 }}>
-                          {predictionBetMarket ? (
-                            <div style={{ padding: 20 }}>
-                              {/* Outcome name */}
-                              <div style={{ fontSize: 15, fontWeight: 600, color: t.glass.text, marginBottom: 16, lineHeight: 1.3 }}>{predictionBetMarket.groupItemTitle || predictionBetMarket.question || "Outcome"}</div>
+                            {predictionBetMarket ? (
+                              <div style={{ padding: 20 }}>
+                                {/* Outcome name */}
+                                <div style={{ fontSize: 15, fontWeight: 600, color: t.glass.text, marginBottom: 16, lineHeight: 1.3 }}>{predictionBetMarket.groupItemTitle || predictionBetMarket.question || "Outcome"}</div>
 
-                              {/* Yes / No at market price — Polymarket-style */}
-                              <div style={{ display: "flex", gap: 8, marginBottom: 20 }}>
-                                <button type="button" onClick={() => { setPredictionBetSide("yes"); setPredictionBetPrice(predictionBetMarket.yesPrice ? String(predictionBetMarket.yesPrice.toFixed(2)) : "0.50"); }} style={{
-                                  flex: 1, padding: "14px 16px", borderRadius: 10, border: "none", cursor: "pointer",
-                                  background: predictionBetSide === "yes" ? t.glass.green : (theme === "dark" ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.05)"),
-                                  color: predictionBetSide === "yes" ? "#000" : t.glass.text, fontWeight: 700, fontSize: 15
-                                }}>Yes {(predictionBetMarket.yesPrice != null ? (predictionBetMarket.yesPrice * 100).toFixed(1) : "0")}¢</button>
-                                <button type="button" onClick={() => { setPredictionBetSide("no"); setPredictionBetPrice(predictionBetMarket.noPrice ? String(predictionBetMarket.noPrice.toFixed(2)) : "0.50"); }} style={{
-                                  flex: 1, padding: "14px 16px", borderRadius: 10, border: "none", cursor: "pointer",
-                                  background: predictionBetSide === "no" ? t.glass.red : (theme === "dark" ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.05)"),
-                                  color: predictionBetSide === "no" ? "#fff" : t.glass.text, fontWeight: 700, fontSize: 15
-                                }}>No {(predictionBetMarket.noPrice != null ? (predictionBetMarket.noPrice * 100).toFixed(1) : "0")}¢</button>
-                              </div>
+                                {/* Yes / No at market price — Polymarket-style */}
+                                <div style={{ display: "flex", gap: 8, marginBottom: 20 }}>
+                                  <button type="button" onClick={() => { setPredictionBetSide("yes"); setPredictionBetPrice(predictionBetMarket.yesPrice ? String(predictionBetMarket.yesPrice.toFixed(2)) : "0.50"); }} style={{
+                                    flex: 1, padding: "14px 16px", borderRadius: 10, border: "none", cursor: "pointer",
+                                    background: predictionBetSide === "yes" ? t.glass.green : (theme === "dark" ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.05)"),
+                                    color: predictionBetSide === "yes" ? "#000" : t.glass.text, fontWeight: 700, fontSize: 15
+                                  }}>Yes {(predictionBetMarket.yesPrice != null ? (predictionBetMarket.yesPrice * 100).toFixed(1) : "0")}¢</button>
+                                  <button type="button" onClick={() => { setPredictionBetSide("no"); setPredictionBetPrice(predictionBetMarket.noPrice ? String(predictionBetMarket.noPrice.toFixed(2)) : "0.50"); }} style={{
+                                    flex: 1, padding: "14px 16px", borderRadius: 10, border: "none", cursor: "pointer",
+                                    background: predictionBetSide === "no" ? t.glass.red : (theme === "dark" ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.05)"),
+                                    color: predictionBetSide === "no" ? "#fff" : t.glass.text, fontWeight: 700, fontSize: 15
+                                  }}>No {(predictionBetMarket.noPrice != null ? (predictionBetMarket.noPrice * 100).toFixed(1) : "0")}¢</button>
+                                </div>
 
-                              {/* Amount — Polymarket-style with quick add */}
-                              <div style={{ marginBottom: 16 }}>
-                                <label style={{ fontSize: 12, color: t.glass.textTertiary, display: "block", marginBottom: 8 }}>Amount</label>
-                                <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                                  <input type="number" min="1" step="1" value={predictionBetSize} onChange={(e) => setPredictionBetSize(e.target.value)}
-                                    style={{ flex: "1 1 80px", minWidth: 0, padding: "12px 14px", borderRadius: 10, border: "1px solid " + t.glass.border, background: theme === "dark" ? "rgba(255,255,255,0.04)" : "#fff", color: t.glass.text, fontSize: 16, fontWeight: 600, outline: "none" }} />
-                                  <div style={{ display: "flex", gap: 4 }}>
-                                    {[1, 5, 10, 100].map((n) => (
-                                      <button key={n} type="button" onClick={() => setPredictionBetSize(String(Math.max(1, Number(predictionBetSize) + n)))} style={{
-                                        padding: "8px 12px", borderRadius: 8, border: "1px solid " + t.glass.border, background: "transparent", color: t.glass.textSecondary, fontSize: 12, fontWeight: 600, cursor: "pointer"
-                                      }}>+{n}</button>
-                                    ))}
+                                {/* Amount — Polymarket-style with quick add */}
+                                <div style={{ marginBottom: 16 }}>
+                                  <label style={{ fontSize: 12, color: t.glass.textTertiary, display: "block", marginBottom: 8 }}>Amount</label>
+                                  <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                                    <input type="number" min="1" step="1" value={predictionBetSize} onChange={(e) => setPredictionBetSize(e.target.value)}
+                                      style={{ flex: "1 1 80px", minWidth: 0, padding: "12px 14px", borderRadius: 10, border: "1px solid " + t.glass.border, background: theme === "dark" ? "rgba(255,255,255,0.04)" : "#fff", color: t.glass.text, fontSize: 16, fontWeight: 600, outline: "none" }} />
+                                    <div style={{ display: "flex", gap: 4 }}>
+                                      {[1, 5, 10, 100].map((n) => (
+                                        <button key={n} type="button" onClick={() => setPredictionBetSize(String(Math.max(1, Number(predictionBetSize) + n)))} style={{
+                                          padding: "8px 12px", borderRadius: 8, border: "1px solid " + t.glass.border, background: "transparent", color: t.glass.textSecondary, fontSize: 12, fontWeight: 600, cursor: "pointer"
+                                        }}>+{n}</button>
+                                      ))}
+                                    </div>
                                   </div>
                                 </div>
-                              </div>
 
-                              {/* Cost summary — minimal */}
-                              {(() => {
-                                const cost = Number(predictionBetPrice) * Number(predictionBetSize);
-                                const total = cost + cost * PREDICTION_FEE_PCT;
-                                return (
-                                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, color: t.glass.textTertiary, marginBottom: 16 }}>
-                                    <span>Cost</span>
-                                    <span style={{ color: t.glass.text, fontWeight: 600 }}>${total.toFixed(2)}</span>
-                                  </div>
-                                );
-                              })()}
+                                {/* Cost summary — minimal */}
+                                {(() => {
+                                  const cost = Number(predictionBetPrice) * Number(predictionBetSize);
+                                  const total = cost + cost * PREDICTION_FEE_PCT;
+                                  return (
+                                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, color: t.glass.textTertiary, marginBottom: 16 }}>
+                                      <span>Cost</span>
+                                      <span style={{ color: t.glass.text, fontWeight: 600 }}>${total.toFixed(2)}</span>
+                                    </div>
+                                  );
+                                })()}
 
-                              {predictionOrderError && <div style={{ fontSize: 12, color: t.glass.red, marginBottom: 12, textAlign: "center" }}>{predictionOrderError}</div>}
+                                {predictionOrderError && <div style={{ fontSize: 12, color: t.glass.red, marginBottom: 12, textAlign: "center" }}>{predictionOrderError}</div>}
 
-                              <button
-                                type="button"
-                                disabled={predictionOrderLoading || !(predictionBetMarket.yesTokenId || predictionBetMarket.noTokenId)}
-                                onClick={async () => {
-                                  const provider = wallet.getProvider?.();
-                                  if (!provider || !connected) { setPredictionOrderError("Connect wallet first"); return; }
-                                  setPredictionOrderError(null);
-                                  setPredictionOrderLoading(true);
-                                  try {
-                                    await placePolymarketOrder(provider, { yesTokenId: predictionBetMarket.yesTokenId, noTokenId: predictionBetMarket.noTokenId }, predictionBetSide, predictionBetPrice, predictionBetSize, PREDICTION_FEE_WALLET_POLY, PREDICTION_FEE_PCT);
-                                    setPredictionBetMarket(null);
-                                  } catch (err) {
-                                    setPredictionOrderError(err.message || "Order failed");
-                                  } finally {
-                                    setPredictionOrderLoading(false);
-                                  }
-                                }}
-                                style={{
-                                  width: "100%", padding: "14px 24px", borderRadius: 10, border: "none",
-                                  background: "#3b82f6", color: "#fff", fontSize: 15, fontWeight: 700, cursor: predictionOrderLoading ? "wait" : "pointer",
-                                  opacity: predictionOrderLoading ? 0.8 : 1
-                                }}
-                              >
-                                {predictionOrderLoading ? "Placing…" : "Trade"}
-                              </button>
-
-                              {predictionNetwork === "polygon" && (
-                                <button type="button" onClick={async () => {
-                                  const provider = wallet.getProvider?.();
-                                  if (provider) try { await provider.request({ method: "wallet_switchEthereumChain", params: [{ chainId: "0x89" }] }); } catch (e) { console.warn(e) }
-                                }} style={{ marginTop: 12, background: "transparent", border: "none", color: t.glass.textTertiary, fontSize: 11, cursor: "pointer", textDecoration: "underline", display: "block" }}>
-                                  Switch to Polygon
+                                <button
+                                  type="button"
+                                  disabled={predictionOrderLoading || !(predictionBetMarket.yesTokenId || predictionBetMarket.noTokenId)}
+                                  onClick={async () => {
+                                    const provider = wallet.getProvider?.();
+                                    if (!provider || !connected) { setPredictionOrderError("Connect wallet first"); return; }
+                                    setPredictionOrderError(null);
+                                    setPredictionOrderLoading(true);
+                                    try {
+                                      await placePolymarketOrder(provider, { yesTokenId: predictionBetMarket.yesTokenId, noTokenId: predictionBetMarket.noTokenId }, predictionBetSide, predictionBetPrice, predictionBetSize, PREDICTION_FEE_WALLET_POLY, PREDICTION_FEE_PCT);
+                                      setPredictionBetMarket(null);
+                                    } catch (err) {
+                                      setPredictionOrderError(err.message || "Order failed");
+                                    } finally {
+                                      setPredictionOrderLoading(false);
+                                    }
+                                  }}
+                                  style={{
+                                    width: "100%", padding: "14px 24px", borderRadius: 10, border: "none",
+                                    background: "#3b82f6", color: "#fff", fontSize: 15, fontWeight: 700, cursor: predictionOrderLoading ? "wait" : "pointer",
+                                    opacity: predictionOrderLoading ? 0.8 : 1
+                                  }}
+                                >
+                                  {predictionOrderLoading ? "Placing…" : "Trade"}
                                 </button>
-                              )}
 
-                            </div>
-                          ) : (
-                            <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 16, color: t.glass.textTertiary, padding: 32, textAlign: "center" }}>
-                              <div style={{ fontSize: 40, opacity: 0.2 }}>👈</div>
-                              <div style={{ fontSize: 13, maxWidth: 200, lineHeight: 1.5 }}>Select an outcome from the list to place a trade</div>
-                            </div>
-                          )}
+                                {predictionNetwork === "polygon" && (
+                                  <button type="button" onClick={async () => {
+                                    const provider = wallet.getProvider?.();
+                                    if (provider) try { await provider.request({ method: "wallet_switchEthereumChain", params: [{ chainId: "0x89" }] }); } catch (e) { console.warn(e) }
+                                  }} style={{ marginTop: 12, background: "transparent", border: "none", color: t.glass.textTertiary, fontSize: 11, cursor: "pointer", textDecoration: "underline", display: "block" }}>
+                                    Switch to Polygon
+                                  </button>
+                                )}
+
+                              </div>
+                            ) : (
+                              <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 16, color: t.glass.textTertiary, padding: 32, textAlign: "center" }}>
+                                <div style={{ fontSize: 40, opacity: 0.2 }}>👈</div>
+                                <div style={{ fontSize: 13, maxWidth: 200, lineHeight: 1.5 }}>Select an outcome from the list to place a trade</div>
+                              </div>
+                            )}
                           </div>
                           {/* News — fills remaining sidebar; scrollable with visible affordance */}
                           <div style={{ borderTop: "1px solid " + t.glass.border, flex: 1, minHeight: 220, display: "flex", flexDirection: "column", background: theme === "dark" ? "rgba(0,0,0,0.2)" : "rgba(255,255,255,0.5)" }}>
@@ -3406,909 +3406,909 @@ export default function OmegaDEX() {
                   </div>
                 </div>
               ) : (
-              /* ═══ DESKTOP: MAIN GRID ═══ */
-              <div className="dex-main-grid" style={{
-                display: "grid", gridTemplateColumns: isZeroXPair ? "380px 1fr 340px" : "280px 1fr 340px",
-                gap: 12, padding: 12, height: "calc(100vh - 120px)", minHeight: 600,
-              }}>
+                /* ═══ DESKTOP: MAIN GRID ═══ */
+                <div className="dex-main-grid" style={{
+                  display: "grid", gridTemplateColumns: isZeroXPair ? "380px 1fr 340px" : "280px 1fr 340px",
+                  gap: 12, padding: 12, height: "calc(100vh - 120px)", minHeight: 600,
+                }}>
 
-                {/* ─── LEFT: ORDER BOOK (native) or NEWS + TECHNICAL (0x) ─── */}
-                {isZeroXPair ? (
-                  <div className="dex-left-panel dex-zerox-left" style={{ ...t.panel, display: "flex", flexDirection: "column", overflow: "hidden" }}>
-                    <div style={{ display: "flex", gap: 6, padding: "12px 12px 6px", background: theme === "dark" ? "rgba(255,255,255,0.04)" : "rgba(212,175,55,0.06)", borderRadius: "100px", margin: "10px 10px 0" }}>
-                      {["news", "technical"].map((tab) => (
-                        <button key={tab} onClick={() => setZeroxLeftTab(tab)} style={{
-                          flex: 1, padding: "6px 0", borderRadius: "100px", border: "none", cursor: "pointer",
-                          fontSize: 10, fontWeight: 600, letterSpacing: "0.04em", textTransform: "uppercase",
-                          background: zeroxLeftTab === tab ? (theme === "dark" ? "rgba(255,255,255,0.12)" : "rgba(255,255,255,0.95)") : "transparent",
-                          color: zeroxLeftTab === tab ? t.glass.text : t.glass.textTertiary, transition: "all 0.3s cubic-bezier(0.16, 1, 0.3, 1)",
-                          boxShadow: zeroxLeftTab === tab ? (theme === "dark" ? "none" : "0 2px 8px rgba(212,175,55,0.15)") : "none",
-                        }}>
-                          {tab === "news" ? "News" : "Technical"}
-                        </button>
-                      ))}
-                    </div>
-                    <div style={{ flex: 1, overflow: "hidden", padding: 8, minHeight: 200, minWidth: 0, display: "flex", flexDirection: "column" }}>
-                      {zeroxLeftTab === "news" && (
-                        <CryptoNews theme={theme} ticker={chartPair?.baseToken || "ETH"} />
-                      )}
-                      {zeroxLeftTab === "technical" && (
-                        <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
-                          <TradingViewTechnical symbol={chartPair?.tradingViewSymbol || "BINANCE:ETHUSDC"} theme={theme} />
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                ) : (
-                  <div className="dex-left-panel" style={{ ...t.panel, display: "flex", flexDirection: "column", overflow: "hidden" }}>
-                    <div style={{ display: "flex", gap: 6, padding: "12px 12px 6px", background: theme === "dark" ? "rgba(255,255,255,0.04)" : "rgba(212,175,55,0.06)", borderRadius: "100px", margin: "10px 10px 0" }}>
-                      {["orderbook", "trades"].map((tab) => (
-                        <button key={tab} onClick={() => setActiveTab(tab)} style={{
-                          flex: 1, padding: "6px 0", borderRadius: "100px", border: "none", cursor: "pointer",
-                          fontSize: 10, fontWeight: 600, letterSpacing: "0.04em", textTransform: "uppercase",
-                          background: activeTab === tab ? (theme === "dark" ? "rgba(255,255,255,0.12)" : "rgba(255,255,255,0.95)") : "transparent",
-                          color: activeTab === tab ? t.glass.text : t.glass.textTertiary, transition: "all 0.3s cubic-bezier(0.16, 1, 0.3, 1)",
-                          boxShadow: activeTab === tab ? (theme === "dark" ? "none" : "0 2px 8px rgba(212,175,55,0.15)") : "none",
-                        }}>
-                          {tab === "orderbook" ? "Book" : "Trades"}
-                        </button>
-                      ))}
-
-                    </div>
-
-
-                    {activeTab === "orderbook" && (
-                      <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
-                        <div style={{
-                          display: "grid", gridTemplateColumns: "1fr 1fr 1fr",
-                          padding: "8px 10px 4px", fontSize: 9, color: t.glass.textTertiary, letterSpacing: "0.04em",
-                        }}>
-                          <span>Price</span><span style={{ textAlign: "right" }}>Amount</span><span style={{ textAlign: "right" }}>Total</span>
-                        </div>
-
-                        <div style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column", justifyContent: "flex-end" }}>
-                          {(orderBook.asks || []).slice(0, 24).reverse().map((ask, i) => (
-                            <div key={i} onClick={() => setPrice(ask.price.toFixed(4))} style={{
-                              display: "grid", gridTemplateColumns: "1fr 1fr 1fr",
-                              padding: "2.5px 12px", fontSize: 10.5, fontFamily: "'SF Mono', 'Menlo', monospace",
-                              position: "relative", cursor: "pointer", margin: "1px 0",
-                            }}>
-                              <div style={{
-                                position: "absolute", right: 6, top: 1, bottom: 1, borderRadius: "100px",
-                                width: `${(ask.total / maxAsk) * 100}%`, background: t.orderBook.askBar, transition: "width 0.5s",
-                              }} />
-                              <span style={{ color: t.glass.red, position: "relative", fontWeight: 600 }}>{ask.price.toFixed(4)}</span>
-                              <span style={{ textAlign: "right", position: "relative", color: t.glass.textSecondary }}>{ask.amount.toLocaleString()}</span>
-                              <span style={{ textAlign: "right", position: "relative", color: t.glass.textTertiary }}>{ask.total.toLocaleString()}</span>
-                            </div>
-                          ))}
-                        </div>
-
-
-                        <div style={{
-                          padding: "7px 10px", borderTop: "1px solid " + t.glass.border,
-                          borderBottom: "1px solid " + t.glass.border,
-                          display: "flex", alignItems: "center", gap: 8,
-                        }}>
-                          <span style={{ fontSize: 15, fontWeight: 700, color: t.glass.green, fontFamily: "'SF Mono', monospace" }}>
-                            {orderBook.midPrice?.toFixed(4) ?? "0.0000"}
-                          </span>
-                          <span style={{ fontSize: 10, color: t.glass.textTertiary }}>≈ ${orderBook.midPrice?.toFixed(4) ?? "0.0000"}</span>
-                          <span style={{ fontSize: 9, color: t.glass.green, marginLeft: "auto" }}>▲</span>
-                        </div>
-
-                        <div style={{ flex: 1, overflow: "hidden" }}>
-                          {(orderBook.bids || []).slice(0, 24).map((bid, i) => (
-                            <div key={i} onClick={() => setPrice(bid.price.toFixed(4))} style={{
-                              display: "grid", gridTemplateColumns: "1fr 1fr 1fr",
-                              padding: "2.5px 12px", fontSize: 10.5, fontFamily: "'SF Mono', 'Menlo', monospace",
-                              position: "relative", cursor: "pointer", margin: "1px 0",
-                            }}>
-                              <div style={{
-                                position: "absolute", right: 6, top: 1, bottom: 1, borderRadius: "100px",
-                                width: `${(bid.total / maxBid) * 100}%`, background: t.orderBook.bidBar, transition: "width 0.5s",
-                              }} />
-                              <span style={{ color: t.glass.green, position: "relative", fontWeight: 600 }}>{bid.price.toFixed(4)}</span>
-                              <span style={{ textAlign: "right", position: "relative", color: t.glass.textSecondary }}>{bid.amount.toLocaleString()}</span>
-                              <span style={{ textAlign: "right", position: "relative", color: t.glass.textTertiary }}>{bid.total.toLocaleString()}</span>
-                            </div>
-                          ))}
-                        </div>
-
-                      </div>
-                    )}
-
-
-                    {activeTab === "trades" && (
-                      <div style={{ flex: 1, overflow: "auto", padding: "0 0 8px" }}>
-                        <div style={{
-                          display: "grid", gridTemplateColumns: "1fr 1fr 1fr",
-                          padding: "8px 10px 4px", fontSize: 9, color: t.glass.textTertiary, letterSpacing: "0.04em",
-                          position: "sticky", top: 0, background: "rgba(255,255,255,0.9)", backdropFilter: "blur(10px)",
-                        }}>
-                          <span>Price</span><span style={{ textAlign: "right" }}>Amount</span><span style={{ textAlign: "right" }}>Time</span>
-                        </div>
-                        {trades.map((tr, i) => (
-                          <div key={i} style={{
-                            display: "grid", gridTemplateColumns: "1fr 1fr 1fr",
-                            padding: "2.5px 10px", fontSize: 10.5, fontFamily: "'SF Mono', monospace",
+                  {/* ─── LEFT: ORDER BOOK (native) or NEWS + TECHNICAL (0x) ─── */}
+                  {isZeroXPair ? (
+                    <div className="dex-left-panel dex-zerox-left" style={{ ...t.panel, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+                      <div style={{ display: "flex", gap: 6, padding: "12px 12px 6px", background: theme === "dark" ? "rgba(255,255,255,0.04)" : "rgba(212,175,55,0.06)", borderRadius: "100px", margin: "10px 10px 0" }}>
+                        {["news", "technical"].map((tab) => (
+                          <button key={tab} onClick={() => setZeroxLeftTab(tab)} style={{
+                            flex: 1, padding: "6px 0", borderRadius: "100px", border: "none", cursor: "pointer",
+                            fontSize: 10, fontWeight: 600, letterSpacing: "0.04em", textTransform: "uppercase",
+                            background: zeroxLeftTab === tab ? (theme === "dark" ? "rgba(255,255,255,0.12)" : "rgba(255,255,255,0.95)") : "transparent",
+                            color: zeroxLeftTab === tab ? t.glass.text : t.glass.textTertiary, transition: "all 0.3s cubic-bezier(0.16, 1, 0.3, 1)",
+                            boxShadow: zeroxLeftTab === tab ? (theme === "dark" ? "none" : "0 2px 8px rgba(212,175,55,0.15)") : "none",
                           }}>
-                            <span style={{ color: tr.side === "buy" ? t.glass.green : t.glass.red, fontWeight: 500 }}>{tr.price.toFixed(4)}</span>
-                            <span style={{ textAlign: "right", color: t.glass.textSecondary }}>{tr.amount.toLocaleString()}</span>
-                            <span style={{ textAlign: "right", color: t.glass.textTertiary }}>{(tr.time || tr.timestamp) ? new Date(tr.time || tr.timestamp).toLocaleTimeString() : "—"}</span>
-                          </div>
+                            {tab === "news" ? "News" : "Technical"}
+                          </button>
                         ))}
                       </div>
-                    )}
-
-                    {activeTab === "depth" && (
-                      <div style={{ flex: 1, padding: 8 }}><DepthChart depthData={depthData} /></div>
-                    )}
-                  </div>
-                )}
-
-                {/* ─── CENTER: CHART + ORDERS ─── */}
-                <div className="dex-center-col" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-                  {isZeroXPair ? (
-                    /* TradingView chart for 0x pairs */
-                    <div className="dex-center-row" style={{ display: "flex", flex: 1, gap: 12 }}>
-                      <div className="dex-chart-panel" style={{ ...t.panel, flex: 1, position: "relative", overflow: "hidden" }}>
-                        <TradingViewChart symbol={chartPair?.tradingViewSymbol || "BINANCE:ETHUSDC"} theme={theme} />
+                      <div style={{ flex: 1, overflow: "hidden", padding: 8, minHeight: 200, minWidth: 0, display: "flex", flexDirection: "column" }}>
+                        {zeroxLeftTab === "news" && (
+                          <CryptoNews theme={theme} ticker={chartPair?.baseToken || "ETH"} />
+                        )}
+                        {zeroxLeftTab === "technical" && (
+                          <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
+                            <TradingViewTechnical symbol={chartPair?.tradingViewSymbol || "BINANCE:ETHUSDC"} theme={theme} />
+                          </div>
+                        )}
                       </div>
                     </div>
                   ) : (
-                    <div className="dex-center-row" style={{ display: "flex", flex: 1, gap: 12 }}>
-                      {/* ─── CHART TOOLS ─── */}
-                      <div className="dex-chart-tools" style={{
-                        ...t.panel, width: 42, display: "flex", flexDirection: "column", alignItems: "center",
-                        gap: 16, padding: "16px 0", height: "100%"
+                    <div className="dex-left-panel" style={{ ...t.panel, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+                      <div style={{ display: "flex", gap: 6, padding: "12px 12px 6px", background: theme === "dark" ? "rgba(255,255,255,0.04)" : "rgba(212,175,55,0.06)", borderRadius: "100px", margin: "10px 10px 0" }}>
+                        {["orderbook", "trades"].map((tab) => (
+                          <button key={tab} onClick={() => setActiveTab(tab)} style={{
+                            flex: 1, padding: "6px 0", borderRadius: "100px", border: "none", cursor: "pointer",
+                            fontSize: 10, fontWeight: 600, letterSpacing: "0.04em", textTransform: "uppercase",
+                            background: activeTab === tab ? (theme === "dark" ? "rgba(255,255,255,0.12)" : "rgba(255,255,255,0.95)") : "transparent",
+                            color: activeTab === tab ? t.glass.text : t.glass.textTertiary, transition: "all 0.3s cubic-bezier(0.16, 1, 0.3, 1)",
+                            boxShadow: activeTab === tab ? (theme === "dark" ? "none" : "0 2px 8px rgba(212,175,55,0.15)") : "none",
+                          }}>
+                            {tab === "orderbook" ? "Book" : "Trades"}
+                          </button>
+                        ))}
+
+                      </div>
+
+
+                      {activeTab === "orderbook" && (
+                        <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+                          <div style={{
+                            display: "grid", gridTemplateColumns: "1fr 1fr 1fr",
+                            padding: "8px 10px 4px", fontSize: 9, color: t.glass.textTertiary, letterSpacing: "0.04em",
+                          }}>
+                            <span>Price</span><span style={{ textAlign: "right" }}>Amount</span><span style={{ textAlign: "right" }}>Total</span>
+                          </div>
+
+                          <div style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column", justifyContent: "flex-end" }}>
+                            {(orderBook.asks || []).slice(0, 24).reverse().map((ask, i) => (
+                              <div key={i} onClick={() => setPrice(ask.price.toFixed(4))} style={{
+                                display: "grid", gridTemplateColumns: "1fr 1fr 1fr",
+                                padding: "2.5px 12px", fontSize: 10.5, fontFamily: "'SF Mono', 'Menlo', monospace",
+                                position: "relative", cursor: "pointer", margin: "1px 0",
+                              }}>
+                                <div style={{
+                                  position: "absolute", right: 6, top: 1, bottom: 1, borderRadius: "100px",
+                                  width: `${(ask.total / maxAsk) * 100}%`, background: t.orderBook.askBar, transition: "width 0.5s",
+                                }} />
+                                <span style={{ color: t.glass.red, position: "relative", fontWeight: 600 }}>{ask.price.toFixed(4)}</span>
+                                <span style={{ textAlign: "right", position: "relative", color: t.glass.textSecondary }}>{ask.amount.toLocaleString()}</span>
+                                <span style={{ textAlign: "right", position: "relative", color: t.glass.textTertiary }}>{ask.total.toLocaleString()}</span>
+                              </div>
+                            ))}
+                          </div>
+
+
+                          <div style={{
+                            padding: "7px 10px", borderTop: "1px solid " + t.glass.border,
+                            borderBottom: "1px solid " + t.glass.border,
+                            display: "flex", alignItems: "center", gap: 8,
+                          }}>
+                            <span style={{ fontSize: 15, fontWeight: 700, color: t.glass.green, fontFamily: "'SF Mono', monospace" }}>
+                              {orderBook.midPrice?.toFixed(4) ?? "0.0000"}
+                            </span>
+                            <span style={{ fontSize: 10, color: t.glass.textTertiary }}>≈ ${orderBook.midPrice?.toFixed(4) ?? "0.0000"}</span>
+                            <span style={{ fontSize: 9, color: t.glass.green, marginLeft: "auto" }}>▲</span>
+                          </div>
+
+                          <div style={{ flex: 1, overflow: "hidden" }}>
+                            {(orderBook.bids || []).slice(0, 24).map((bid, i) => (
+                              <div key={i} onClick={() => setPrice(bid.price.toFixed(4))} style={{
+                                display: "grid", gridTemplateColumns: "1fr 1fr 1fr",
+                                padding: "2.5px 12px", fontSize: 10.5, fontFamily: "'SF Mono', 'Menlo', monospace",
+                                position: "relative", cursor: "pointer", margin: "1px 0",
+                              }}>
+                                <div style={{
+                                  position: "absolute", right: 6, top: 1, bottom: 1, borderRadius: "100px",
+                                  width: `${(bid.total / maxBid) * 100}%`, background: t.orderBook.bidBar, transition: "width 0.5s",
+                                }} />
+                                <span style={{ color: t.glass.green, position: "relative", fontWeight: 600 }}>{bid.price.toFixed(4)}</span>
+                                <span style={{ textAlign: "right", position: "relative", color: t.glass.textSecondary }}>{bid.amount.toLocaleString()}</span>
+                                <span style={{ textAlign: "right", position: "relative", color: t.glass.textTertiary }}>{bid.total.toLocaleString()}</span>
+                              </div>
+                            ))}
+                          </div>
+
+                        </div>
+                      )}
+
+
+                      {activeTab === "trades" && (
+                        <div style={{ flex: 1, overflow: "auto", padding: "0 0 8px" }}>
+                          <div style={{
+                            display: "grid", gridTemplateColumns: "1fr 1fr 1fr",
+                            padding: "8px 10px 4px", fontSize: 9, color: t.glass.textTertiary, letterSpacing: "0.04em",
+                            position: "sticky", top: 0, background: "rgba(255,255,255,0.9)", backdropFilter: "blur(10px)",
+                          }}>
+                            <span>Price</span><span style={{ textAlign: "right" }}>Amount</span><span style={{ textAlign: "right" }}>Time</span>
+                          </div>
+                          {trades.map((tr, i) => (
+                            <div key={i} style={{
+                              display: "grid", gridTemplateColumns: "1fr 1fr 1fr",
+                              padding: "2.5px 10px", fontSize: 10.5, fontFamily: "'SF Mono', monospace",
+                            }}>
+                              <span style={{ color: tr.side === "buy" ? t.glass.green : t.glass.red, fontWeight: 500 }}>{tr.price.toFixed(4)}</span>
+                              <span style={{ textAlign: "right", color: t.glass.textSecondary }}>{tr.amount.toLocaleString()}</span>
+                              <span style={{ textAlign: "right", color: t.glass.textTertiary }}>{(tr.time || tr.timestamp) ? new Date(tr.time || tr.timestamp).toLocaleTimeString() : "—"}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {activeTab === "depth" && (
+                        <div style={{ flex: 1, padding: 8 }}><DepthChart depthData={depthData} /></div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* ─── CENTER: CHART + ORDERS ─── */}
+                  <div className="dex-center-col" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                    {isZeroXPair ? (
+                      /* TradingView chart for 0x pairs */
+                      <div className="dex-center-row" style={{ display: "flex", flex: 1, gap: 12 }}>
+                        <div className="dex-chart-panel" style={{ ...t.panel, flex: 1, position: "relative", overflow: "hidden" }}>
+                          <TradingViewChart symbol={chartPair?.tradingViewSymbol || "BINANCE:ETHUSDC"} theme={theme} />
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="dex-center-row" style={{ display: "flex", flex: 1, gap: 12 }}>
+                        {/* ─── CHART TOOLS ─── */}
+                        <div className="dex-chart-tools" style={{
+                          ...t.panel, width: 42, display: "flex", flexDirection: "column", alignItems: "center",
+                          gap: 16, padding: "16px 0", height: "100%"
+                        }}>
+                          {["⊹", "↗", "📏", "▭", "T", "⌘", "🎨", "🗑️", "🖌️", "⬡", "🔒"].map((tool, i) => (
+                            <button
+                              key={i}
+                              onClick={() => {
+                                if (tool === "🗑️") setChartDrawings([]);
+                                else setActiveDrawingTool(activeDrawingTool === tool ? null : tool);
+                              }}
+                              style={{
+                                background: activeDrawingTool === tool ? (theme === "dark" ? "rgba(255,255,255,0.12)" : "rgba(212,175,55,0.2)") : "transparent",
+                                border: "none", color: (activeDrawingTool === tool || tool === "🗑️" || tool === "🔒") ? t.glass.text : t.glass.textTertiary,
+                                fontSize: 16, cursor: "pointer", width: 28, height: 28,
+                                borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center",
+                                transition: "0.2s",
+                                boxShadow: activeDrawingTool === tool && theme !== "dark" ? "0 4px 12px rgba(212,175,55,0.2)" : "none"
+                              }}
+                            >{tool}</button>
+                          ))}
+                        </div>
+
+
+                        <div className="dex-chart-panel" style={{ ...t.panel, flex: 1, position: "relative", overflow: "hidden" }}>
+                          <div style={{
+                            display: "flex", alignItems: "center", gap: 6,
+                            padding: "10px 14px", borderBottom: "1px solid rgba(255,255,255,0.04)",
+                          }}>
+                            {["1m", "5m", "15m", "1H", "4H", "1D", "1W"].map((tf) => (
+                              <button key={tf} onClick={() => setChartTf(tf)} style={{
+                                padding: "3px 9px", borderRadius: 5, border: "none", cursor: "pointer",
+                                fontSize: 10, fontWeight: 500,
+                                background: chartTf === tf ? (theme === "dark" ? "rgba(255,255,255,0.1)" : "rgba(212,175,55,0.15)") : "transparent",
+                                color: chartTf === tf ? t.glass.text : t.glass.textTertiary,
+                                transition: "all 0.2s",
+                              }}>{tf}</button>
+                            ))}
+                          </div>
+                          <div style={{ height: "calc(100% - 42px)" }}>
+                            <MiniChart
+                              activeTool={activeDrawingTool}
+                              drawings={chartDrawings}
+                              onAddDrawing={(d) => setChartDrawings([...chartDrawings, d])}
+                              midPrice={orderBook.midPrice}
+                              trades={trades}
+                              chartTf={chartTf}
+                            />
+                          </div>
+                          <div style={{
+                            position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%)",
+                            fontSize: 60, fontWeight: 900, color: "rgba(212,175,55,0.06)",
+                            letterSpacing: "0.2em", pointerEvents: "none"
+                          }}>OMEGA</div>
+                        </div>
+
+                      </div>
+                    )}
+
+
+                    <div className="dex-bottom-panel" style={{ ...t.panel, flex: "none", height: 220, minHeight: 220, overflow: "hidden" }}>
+                      <div className="dex-bottom-tabs" style={{
+                        display: "flex", alignItems: "center", padding: "0 14px",
+                        borderBottom: "1px solid " + t.glass.border, overflowX: "auto", overflowY: "hidden"
                       }}>
-                        {["⊹", "↗", "📏", "▭", "T", "⌘", "🎨", "🗑️", "🖌️", "⬡", "🔒"].map((tool, i) => (
-                          <button
-                            key={i}
-                            onClick={() => {
-                              if (tool === "🗑️") setChartDrawings([]);
-                              else setActiveDrawingTool(activeDrawingTool === tool ? null : tool);
-                            }}
+                        {["Balances", "Positions", "Orders", "TWAP", "Trades", "Funding", "History"].map(tab => (
+                          <div
+                            key={tab}
+                            onClick={() => setBottomTab(tab.toLowerCase())}
                             style={{
-                              background: activeDrawingTool === tool ? (theme === "dark" ? "rgba(255,255,255,0.12)" : "rgba(212,175,55,0.2)") : "transparent",
-                              border: "none", color: (activeDrawingTool === tool || tool === "🗑️" || tool === "🔒") ? t.glass.text : t.glass.textTertiary,
-                              fontSize: 16, cursor: "pointer", width: 28, height: 28,
-                              borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center",
-                              transition: "0.2s",
-                              boxShadow: activeDrawingTool === tool && theme !== "dark" ? "0 4px 12px rgba(212,175,55,0.2)" : "none"
+                              padding: "12px 16px", fontSize: 11, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap",
+                              color: bottomTab === tab.toLowerCase() ? t.glass.text : t.glass.textTertiary,
+                              borderBottom: bottomTab === tab.toLowerCase() ? "2px solid " + t.glass.gold : "none",
+                              transition: "0.2s"
                             }}
-                          >{tool}</button>
+                          >
+                            {tab}
+                            {tab === "Orders" && openOrders.length > 0 && (
+                              <span style={{ marginLeft: 6, opacity: 0.5 }}>{openOrders.length}</span>
+                            )}
+                            {tab === "History" && historyBets.length > 0 && (
+                              <span style={{ marginLeft: 6, opacity: 0.5 }}>{historyBets.length}</span>
+                            )}
+                          </div>
+                        ))}
+
+                        <button
+                          onClick={() => setBottomTab("depth")}
+                          style={{
+                            marginLeft: "auto", padding: "4px 12px", borderRadius: 100,
+                            border: "1px solid " + t.glass.border, background: theme === "dark" ? "rgba(212,175,55,0.05)" : "rgba(0,0,0,0.04)",
+                            color: t.glass.textSecondary, fontSize: 9, fontWeight: 600, cursor: "pointer"
+                          }}
+                        >Market Depth</button>
+                      </div>
+
+                      <div style={{ overflow: "auto", height: "calc(100% - 40px)", padding: "12px 20px" }}>
+                        {bottomTab === "orders" ? (
+                          <div className="dex-orders-table" style={{ overflowX: "auto" }}>
+                            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 10 }}>
+                              <thead>
+                                <tr style={{ color: t.glass.textTertiary, fontSize: 9, letterSpacing: "0.04em" }}>
+                                  {["Side", "Price", "Amount", "Filled", "Token", "Chain", "Time", "Action"].map((h) => (
+                                    <th key={h} style={{ padding: "5px 10px", textAlign: "left", fontWeight: 500 }}>{h}</th>
+                                  ))}
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {openOrders.map((order) => (
+                                  <tr key={order.id} style={{ borderTop: "1px solid " + t.glass.border }}>
+                                    <td style={{ padding: "7px 10px", fontWeight: 600, color: order.side === "buy" ? t.glass.green : t.glass.red }}>{order.side.toUpperCase()}</td>
+                                    <td style={{ padding: "7px 10px", fontFamily: "'SF Mono', monospace" }}>{order.price.toFixed(4)}</td>
+                                    <td style={{ padding: "7px 10px", fontFamily: "'SF Mono', monospace" }}>{order.amount.toLocaleString()}</td>
+                                    <td style={{ padding: "7px 10px" }}>{order.amount ? Math.round((order.filled || 0) / order.amount * 100) : 0}%</td>
+                                    <td style={{ padding: "7px 10px" }}>{order.token || "USDT"}</td>
+                                    <td style={{ padding: "7px 10px" }}>{order.chain || "—"}</td>
+                                    <td style={{ padding: "7px 10px" }}>{order.timestamp ? new Date(order.timestamp).toLocaleTimeString() : "—"}</td>
+                                    <td style={{ padding: "7px 10px" }}>
+                                      <button onClick={() => handleCancelOrder(order.id)} style={{
+                                        background: "none", border: "1px solid " + t.glass.border,
+                                        color: t.glass.text, borderRadius: 4, padding: "2px 8px", cursor: "pointer"
+                                      }}>Cancel</button>
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        ) : bottomTab === "depth" ? (
+                          <div style={{ height: "100%" }}><DepthChart depthData={depthData} /></div>
+                        ) : bottomTab === "history" ? (
+                          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                            {historyLoading ? (
+                              <div style={{ textAlign: "center", padding: 24, color: t.glass.textTertiary, fontSize: 11 }}>Loading…</div>
+                            ) : historyBets.length === 0 ? (
+                              <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 24, opacity: 0.5 }}>
+                                <div style={{ fontSize: 24, marginBottom: 8 }}>∅</div>
+                                <div style={{ fontSize: 11 }}>No history yet. EZ PEZE bets will appear here.</div>
+                              </div>
+                            ) : (
+                              historyBets.map((bet) => {
+                                const isActive = bet.status === "active";
+                                const won = bet.status === "won";
+                                const color = isActive ? t.glass.textSecondary : won ? t.glass.green : t.glass.red;
+                                const ts = bet.placedAt || bet.resolvedAt;
+                                const timeStr = ts ? new Date(ts).toLocaleString() : "—";
+                                return (
+                                  <div key={bet.id} style={{
+                                    padding: "10px 12px", borderRadius: 10,
+                                    background: theme === "dark" ? "rgba(255,255,255,0.04)" : "rgba(0,0,0,0.04)",
+                                    border: "1px solid " + t.glass.border,
+                                  }}>
+                                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 4 }}>
+                                      <div>
+                                        <span style={{ fontSize: 10, color: t.glass.textTertiary }}>EZ PEZE</span>
+                                        <div style={{ fontSize: 12, fontWeight: 700 }}>
+                                          <span style={{ color }}>{bet.direction?.toUpperCase()}</span>
+                                          {" · "}
+                                          <span style={{ fontFamily: "'SF Mono', monospace" }}>{bet.amount} PRE</span>
+                                        </div>
+                                        <div style={{ fontSize: 9, color: t.glass.textTertiary }}>
+                                          Entry {bet.entryPrice?.toFixed(4)}
+                                          {bet.exitPrice != null && ` → ${bet.exitPrice.toFixed(4)}`}
+                                        </div>
+                                      </div>
+                                      <div style={{ textAlign: "right" }}>
+                                        <div style={{ fontSize: 11, fontWeight: 700, color }}>
+                                          {isActive ? "Active" : won ? "Won +" + (bet.amount * 0.5).toFixed(0) + " PRE" : "Lost"}
+                                        </div>
+                                        <div style={{ fontSize: 9, color: t.glass.textTertiary }}>{timeStr}</div>
+                                        {bet.txHash && (
+                                          <a href={`https://0x4e4542bc.explorer.aurora-cloud.dev/tx/${bet.txHash}`} target="_blank" rel="noopener noreferrer" style={{ fontSize: 9, color: t.glass.gold }}>View Tx</a>
+                                        )}
+                                      </div>
+                                    </div>
+                                  </div>
+                                );
+                              })
+                            )}
+                          </div>
+                        ) : (
+                          <div style={{
+                            height: "100%", display: "flex", flexDirection: "column",
+                            alignItems: "center", justifyContent: "center", opacity: 0.4
+                          }}>
+                            <div style={{ fontSize: 24, marginBottom: 8 }}>∅</div>
+                            <div style={{ fontSize: 11 }}>No {bottomTab} recorded yet</div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                  </div>
+
+                  {/* ─── RIGHT: ORDER FORM ─── */}
+                  <div className="dex-right-panel" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+
+                    {!isZeroXPair && (
+                      <div className="dex-cross-chain" style={{ ...t.panel, padding: 14 }}>
+                        <div style={{ fontSize: 9, color: t.glass.textTertiary, marginBottom: 8, letterSpacing: "0.06em", textTransform: "uppercase" }}>Cross-Chain Routing</div>
+                        <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 12px", ...t.panelInner }}>
+                          {/* SOURCE */}
+                          {side === "buy" ? (
+                            <div onClick={() => setShowChainModal(true)} style={{
+                              display: "flex", alignItems: "center", gap: 10, padding: "4px 8px", borderRadius: 14,
+                              cursor: "pointer", transition: "all 0.2s", background: "rgba(255,255,255,0.03)",
+                              border: "1px solid " + t.glass.border,
+                            }}>
+                              <div style={{
+                                width: 28, height: 28, borderRadius: 8, background: "rgba(255,255,255,0.05)",
+                                display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16,
+                                boxShadow: "0 4px 10px rgba(0,0,0,0.2)"
+                              }}>{CHAINS.find((c) => c.id === selectedChain)?.icon}</div>
+                              <div>
+                                <div style={{ fontSize: 11, fontWeight: 600, display: "flex", alignItems: "center", gap: 3 }}>
+                                  {CHAINS.find((c) => c.id === selectedChain)?.name}
+                                  <span style={{ fontSize: 8, opacity: 0.4 }}>▼</span>
+                                </div>
+                                <div style={{ fontSize: 8, color: t.glass.textTertiary, textTransform: "uppercase" }}>Source</div>
+                              </div>
+                            </div>
+                          ) : (
+                            <div style={{
+                              display: "flex", alignItems: "center", gap: 10, padding: "4px 8px", borderRadius: 14,
+                              background: "rgba(255,255,255,0.03)", border: "1px solid " + t.glass.border,
+                            }}>
+                              <OmegaLogo width={28} height={28} theme={theme} style={{ borderRadius: 8, boxShadow: "0 4px 10px rgba(0,0,0,0.2)" }} />
+                              <div>
+                                <div style={{ fontSize: 11, fontWeight: 800 }}>Omega</div>
+                                <div style={{ fontSize: 8, color: t.glass.textTertiary, textTransform: "uppercase" }}>Source</div>
+                              </div>
+                            </div>
+                          )}
+
+                          <div style={{ flex: 1, height: 1, background: "rgba(212,175,55,0.25)", position: "relative" }}>
+                            <div style={{
+                              position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%)",
+                              fontSize: 9, background: t.glass.gold, borderRadius: 8, padding: "1px 8px",
+                              color: "#fff", fontWeight: 700,
+                            }}>→</div>
+                          </div>
+
+                          {/* DESTINATION */}
+                          {side === "buy" ? (
+                            <div style={{
+                              display: "flex", alignItems: "center", gap: 10, padding: "4px 8px", borderRadius: 14,
+                              background: "rgba(255,255,255,0.03)", border: "1px solid " + t.glass.border,
+                            }}>
+                              <OmegaLogo width={28} height={28} theme={theme} style={{ borderRadius: 8, boxShadow: "0 4px 10px rgba(0,0,0,0.2)" }} />
+                              <div>
+                                <div style={{ fontSize: 11, fontWeight: 800 }}>Omega</div>
+                                <div style={{ fontSize: 8, color: t.glass.textTertiary, textTransform: "uppercase" }}>Destination</div>
+                              </div>
+                            </div>
+                          ) : (
+                            <div onClick={() => setShowChainModal(true)} style={{
+                              display: "flex", alignItems: "center", gap: 10, padding: "4px 8px", borderRadius: 14,
+                              cursor: "pointer", transition: "all 0.2s", background: "rgba(255,255,255,0.03)",
+                              border: "1px solid " + t.glass.border,
+                            }}>
+                              <div style={{
+                                width: 28, height: 28, borderRadius: 8, background: "rgba(255,255,255,0.05)",
+                                display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16,
+                                boxShadow: "0 4px 10px rgba(0,0,0,0.2)"
+                              }}>{CHAINS.find((c) => c.id === selectedChain)?.icon}</div>
+                              <div>
+                                <div style={{ fontSize: 11, fontWeight: 600, display: "flex", alignItems: "center", gap: 3 }}>
+                                  {CHAINS.find((c) => c.id === selectedChain)?.name}
+                                  <span style={{ fontSize: 8, opacity: 0.4 }}>▼</span>
+                                </div>
+                                <div style={{ fontSize: 8, color: t.glass.textTertiary, textTransform: "uppercase" }}>Destination</div>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+
+                      </div>
+                    )}
+
+                    <div className="dex-order-form" style={{ ...t.panel, padding: 14, flex: 1, display: "flex", flexDirection: "column" }}>
+                      <div className="form-mode-tabs" style={{ display: "flex", gap: 4, marginBottom: 16, padding: 3, borderRadius: 10, background: theme === "dark" ? "rgba(255,255,255,0.04)" : "rgba(212,175,55,0.06)" }}>
+                        {(isZeroXPair
+                          ? (isEvmPair ? [{ key: "swap", label: "Swap" }, { key: "ezpeze", label: "EZ Peeze" }] : [{ key: "ezpeze", label: "EZ Peeze" }])
+                          : [{ key: "pro", label: "Pro" }, { key: "easy", label: "Easy" }, { key: "ezpeze", label: "EZ Peeze" }]
+                        ).map(m => (
+                          <button key={m.key} onClick={() => setFormMode(m.key)} style={{
+                            flex: 1, padding: "7px 0", borderRadius: 8, border: "none", cursor: "pointer",
+                            fontSize: 9, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em",
+                            background: formMode === m.key ? (theme === "dark" ? "rgba(255,255,255,0.12)" : "rgba(212,175,55,0.2)") : "transparent",
+                            color: formMode === m.key ? t.glass.text : t.glass.textTertiary,
+                            boxShadow: formMode === m.key ? (theme === "dark" ? "none" : "0 2px 8px rgba(212,175,55,0.2)") : "none",
+                            transition: "all 0.3s",
+                          }}>{m.label}</button>
                         ))}
                       </div>
 
-
-                      <div className="dex-chart-panel" style={{ ...t.panel, flex: 1, position: "relative", overflow: "hidden" }}>
-                        <div style={{
-                          display: "flex", alignItems: "center", gap: 6,
-                          padding: "10px 14px", borderBottom: "1px solid rgba(255,255,255,0.04)",
-                        }}>
-                          {["1m", "5m", "15m", "1H", "4H", "1D", "1W"].map((tf) => (
-                            <button key={tf} onClick={() => setChartTf(tf)} style={{
-                              padding: "3px 9px", borderRadius: 5, border: "none", cursor: "pointer",
-                              fontSize: 10, fontWeight: 500,
-                              background: chartTf === tf ? (theme === "dark" ? "rgba(255,255,255,0.1)" : "rgba(212,175,55,0.15)") : "transparent",
-                              color: chartTf === tf ? t.glass.text : t.glass.textTertiary,
-                              transition: "all 0.2s",
-                            }}>{tf}</button>
-                          ))}
-                        </div>
-                        <div style={{ height: "calc(100% - 42px)" }}>
-                          <MiniChart
-                            activeTool={activeDrawingTool}
-                            drawings={chartDrawings}
-                            onAddDrawing={(d) => setChartDrawings([...chartDrawings, d])}
-                            midPrice={orderBook.midPrice}
-                            trades={trades}
-                            chartTf={chartTf}
-                          />
-                        </div>
-                        <div style={{
-                          position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%)",
-                          fontSize: 60, fontWeight: 900, color: "rgba(212,175,55,0.06)",
-                          letterSpacing: "0.2em", pointerEvents: "none"
-                        }}>OMEGA</div>
-                      </div>
-
-                    </div>
-                  )}
-
-
-                  <div className="dex-bottom-panel" style={{ ...t.panel, flex: "none", height: 220, minHeight: 220, overflow: "hidden" }}>
-                    <div className="dex-bottom-tabs" style={{
-                      display: "flex", alignItems: "center", padding: "0 14px",
-                      borderBottom: "1px solid " + t.glass.border, overflowX: "auto", overflowY: "hidden"
-                    }}>
-                      {["Balances", "Positions", "Orders", "TWAP", "Trades", "Funding", "History"].map(tab => (
-                        <div
-                          key={tab}
-                          onClick={() => setBottomTab(tab.toLowerCase())}
-                          style={{
-                            padding: "12px 16px", fontSize: 11, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap",
-                            color: bottomTab === tab.toLowerCase() ? t.glass.text : t.glass.textTertiary,
-                            borderBottom: bottomTab === tab.toLowerCase() ? "2px solid " + t.glass.gold : "none",
-                            transition: "0.2s"
-                          }}
-                        >
-                          {tab}
-                          {tab === "Orders" && openOrders.length > 0 && (
-                            <span style={{ marginLeft: 6, opacity: 0.5 }}>{openOrders.length}</span>
-                          )}
-                          {tab === "History" && historyBets.length > 0 && (
-                            <span style={{ marginLeft: 6, opacity: 0.5 }}>{historyBets.length}</span>
-                          )}
-                        </div>
-                      ))}
-
-                      <button
-                        onClick={() => setBottomTab("depth")}
-                        style={{
-                          marginLeft: "auto", padding: "4px 12px", borderRadius: 100,
-                          border: "1px solid " + t.glass.border, background: theme === "dark" ? "rgba(212,175,55,0.05)" : "rgba(0,0,0,0.04)",
-                          color: t.glass.textSecondary, fontSize: 9, fontWeight: 600, cursor: "pointer"
-                        }}
-                      >Market Depth</button>
-                    </div>
-
-                    <div style={{ overflow: "auto", height: "calc(100% - 40px)", padding: "12px 20px" }}>
-                      {bottomTab === "orders" ? (
-                        <div className="dex-orders-table" style={{ overflowX: "auto" }}>
-                          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 10 }}>
-                            <thead>
-                              <tr style={{ color: t.glass.textTertiary, fontSize: 9, letterSpacing: "0.04em" }}>
-                                {["Side", "Price", "Amount", "Filled", "Token", "Chain", "Time", "Action"].map((h) => (
-                                  <th key={h} style={{ padding: "5px 10px", textAlign: "left", fontWeight: 500 }}>{h}</th>
-                                ))}
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {openOrders.map((order) => (
-                                <tr key={order.id} style={{ borderTop: "1px solid " + t.glass.border }}>
-                                  <td style={{ padding: "7px 10px", fontWeight: 600, color: order.side === "buy" ? t.glass.green : t.glass.red }}>{order.side.toUpperCase()}</td>
-                                  <td style={{ padding: "7px 10px", fontFamily: "'SF Mono', monospace" }}>{order.price.toFixed(4)}</td>
-                                  <td style={{ padding: "7px 10px", fontFamily: "'SF Mono', monospace" }}>{order.amount.toLocaleString()}</td>
-                                  <td style={{ padding: "7px 10px" }}>{order.amount ? Math.round((order.filled || 0) / order.amount * 100) : 0}%</td>
-                                  <td style={{ padding: "7px 10px" }}>{order.token || "USDT"}</td>
-                                  <td style={{ padding: "7px 10px" }}>{order.chain || "—"}</td>
-                                  <td style={{ padding: "7px 10px" }}>{order.timestamp ? new Date(order.timestamp).toLocaleTimeString() : "—"}</td>
-                                  <td style={{ padding: "7px 10px" }}>
-                                    <button onClick={() => handleCancelOrder(order.id)} style={{
-                                      background: "none", border: "1px solid " + t.glass.border,
-                                      color: t.glass.text, borderRadius: 4, padding: "2px 8px", cursor: "pointer"
-                                    }}>Cancel</button>
-                                  </td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
-                      ) : bottomTab === "depth" ? (
-                        <div style={{ height: "100%" }}><DepthChart depthData={depthData} /></div>
-                      ) : bottomTab === "history" ? (
-                        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                          {historyLoading ? (
-                            <div style={{ textAlign: "center", padding: 24, color: t.glass.textTertiary, fontSize: 11 }}>Loading…</div>
-                          ) : historyBets.length === 0 ? (
-                            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 24, opacity: 0.5 }}>
-                              <div style={{ fontSize: 24, marginBottom: 8 }}>∅</div>
-                              <div style={{ fontSize: 11 }}>No history yet. EZ PEZE bets will appear here.</div>
-                            </div>
-                          ) : (
-                            historyBets.map((bet) => {
-                              const isActive = bet.status === "active";
-                              const won = bet.status === "won";
-                              const color = isActive ? t.glass.textSecondary : won ? t.glass.green : t.glass.red;
-                              const ts = bet.placedAt || bet.resolvedAt;
-                              const timeStr = ts ? new Date(ts).toLocaleString() : "—";
-                              return (
-                                <div key={bet.id} style={{
-                                  padding: "10px 12px", borderRadius: 10,
-                                  background: theme === "dark" ? "rgba(255,255,255,0.04)" : "rgba(0,0,0,0.04)",
-                                  border: "1px solid " + t.glass.border,
-                                }}>
-                                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 4 }}>
-                                    <div>
-                                      <span style={{ fontSize: 10, color: t.glass.textTertiary }}>EZ PEZE</span>
-                                      <div style={{ fontSize: 12, fontWeight: 700 }}>
-                                        <span style={{ color }}>{bet.direction?.toUpperCase()}</span>
-                                        {" · "}
-                                        <span style={{ fontFamily: "'SF Mono', monospace" }}>{bet.amount} PRE</span>
-                                      </div>
-                                      <div style={{ fontSize: 9, color: t.glass.textTertiary }}>
-                                        Entry {bet.entryPrice?.toFixed(4)}
-                                        {bet.exitPrice != null && ` → ${bet.exitPrice.toFixed(4)}`}
-                                      </div>
-                                    </div>
-                                    <div style={{ textAlign: "right" }}>
-                                      <div style={{ fontSize: 11, fontWeight: 700, color }}>
-                                        {isActive ? "Active" : won ? "Won +" + (bet.amount * 0.5).toFixed(0) + " PRE" : "Lost"}
-                                      </div>
-                                      <div style={{ fontSize: 9, color: t.glass.textTertiary }}>{timeStr}</div>
-                                      {bet.txHash && (
-                                        <a href={`https://0x4e4542bc.explorer.aurora-cloud.dev/tx/${bet.txHash}`} target="_blank" rel="noopener noreferrer" style={{ fontSize: 9, color: t.glass.gold }}>View Tx</a>
-                                      )}
-                                    </div>
-                                  </div>
-                                </div>
-                              );
-                            })
-                          )}
-                        </div>
-                      ) : (
-                        <div style={{
-                          height: "100%", display: "flex", flexDirection: "column",
-                          alignItems: "center", justifyContent: "center", opacity: 0.4
-                        }}>
-                          <div style={{ fontSize: 24, marginBottom: 8 }}>∅</div>
-                          <div style={{ fontSize: 11 }}>No {bottomTab} recorded yet</div>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                </div>
-
-                {/* ─── RIGHT: ORDER FORM ─── */}
-                <div className="dex-right-panel" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-
-                  {!isZeroXPair && (
-                    <div className="dex-cross-chain" style={{ ...t.panel, padding: 14 }}>
-                      <div style={{ fontSize: 9, color: t.glass.textTertiary, marginBottom: 8, letterSpacing: "0.06em", textTransform: "uppercase" }}>Cross-Chain Routing</div>
-                      <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 12px", ...t.panelInner }}>
-                        {/* SOURCE */}
-                        {side === "buy" ? (
-                          <div onClick={() => setShowChainModal(true)} style={{
-                            display: "flex", alignItems: "center", gap: 10, padding: "4px 8px", borderRadius: 14,
-                            cursor: "pointer", transition: "all 0.2s", background: "rgba(255,255,255,0.03)",
-                            border: "1px solid " + t.glass.border,
+                      {(formMode === "pro" || (isZeroXPair && formMode === "swap")) ? (
+                        <>
+                          <div className="dex-buy-sell-toggle" style={{
+                            display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, padding: 4,
+                            borderRadius: "100px", background: "rgba(212,175,55,0.06)", marginBottom: 18,
                           }}>
-                            <div style={{
-                              width: 28, height: 28, borderRadius: 8, background: "rgba(255,255,255,0.05)",
-                              display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16,
-                              boxShadow: "0 4px 10px rgba(0,0,0,0.2)"
-                            }}>{CHAINS.find((c) => c.id === selectedChain)?.icon}</div>
-                            <div>
-                              <div style={{ fontSize: 11, fontWeight: 600, display: "flex", alignItems: "center", gap: 3 }}>
-                                {CHAINS.find((c) => c.id === selectedChain)?.name}
-                                <span style={{ fontSize: 8, opacity: 0.4 }}>▼</span>
-                              </div>
-                              <div style={{ fontSize: 8, color: t.glass.textTertiary, textTransform: "uppercase" }}>Source</div>
-                            </div>
-                          </div>
-                        ) : (
-                          <div style={{
-                            display: "flex", alignItems: "center", gap: 10, padding: "4px 8px", borderRadius: 14,
-                            background: "rgba(255,255,255,0.03)", border: "1px solid " + t.glass.border,
-                          }}>
-                            <OmegaLogo width={28} height={28} theme={theme} style={{ borderRadius: 8, boxShadow: "0 4px 10px rgba(0,0,0,0.2)" }} />
-                            <div>
-                              <div style={{ fontSize: 11, fontWeight: 800 }}>Omega</div>
-                              <div style={{ fontSize: 8, color: t.glass.textTertiary, textTransform: "uppercase" }}>Source</div>
-                            </div>
-                          </div>
-                        )}
-
-                        <div style={{ flex: 1, height: 1, background: "rgba(212,175,55,0.25)", position: "relative" }}>
-                          <div style={{
-                            position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%)",
-                            fontSize: 9, background: t.glass.gold, borderRadius: 8, padding: "1px 8px",
-                            color: "#fff", fontWeight: 700,
-                          }}>→</div>
-                        </div>
-
-                        {/* DESTINATION */}
-                        {side === "buy" ? (
-                          <div style={{
-                            display: "flex", alignItems: "center", gap: 10, padding: "4px 8px", borderRadius: 14,
-                            background: "rgba(255,255,255,0.03)", border: "1px solid " + t.glass.border,
-                          }}>
-                            <OmegaLogo width={28} height={28} theme={theme} style={{ borderRadius: 8, boxShadow: "0 4px 10px rgba(0,0,0,0.2)" }} />
-                            <div>
-                              <div style={{ fontSize: 11, fontWeight: 800 }}>Omega</div>
-                              <div style={{ fontSize: 8, color: t.glass.textTertiary, textTransform: "uppercase" }}>Destination</div>
-                            </div>
-                          </div>
-                        ) : (
-                          <div onClick={() => setShowChainModal(true)} style={{
-                            display: "flex", alignItems: "center", gap: 10, padding: "4px 8px", borderRadius: 14,
-                            cursor: "pointer", transition: "all 0.2s", background: "rgba(255,255,255,0.03)",
-                            border: "1px solid " + t.glass.border,
-                          }}>
-                            <div style={{
-                              width: 28, height: 28, borderRadius: 8, background: "rgba(255,255,255,0.05)",
-                              display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16,
-                              boxShadow: "0 4px 10px rgba(0,0,0,0.2)"
-                            }}>{CHAINS.find((c) => c.id === selectedChain)?.icon}</div>
-                            <div>
-                              <div style={{ fontSize: 11, fontWeight: 600, display: "flex", alignItems: "center", gap: 3 }}>
-                                {CHAINS.find((c) => c.id === selectedChain)?.name}
-                                <span style={{ fontSize: 8, opacity: 0.4 }}>▼</span>
-                              </div>
-                              <div style={{ fontSize: 8, color: t.glass.textTertiary, textTransform: "uppercase" }}>Destination</div>
-                            </div>
-                          </div>
-                        )}
-                      </div>
-
-                    </div>
-                  )}
-
-                  <div className="dex-order-form" style={{ ...t.panel, padding: 14, flex: 1, display: "flex", flexDirection: "column" }}>
-                    <div className="form-mode-tabs" style={{ display: "flex", gap: 4, marginBottom: 16, padding: 3, borderRadius: 10, background: theme === "dark" ? "rgba(255,255,255,0.04)" : "rgba(212,175,55,0.06)" }}>
-                      {(isZeroXPair
-                        ? (isEvmPair ? [{ key: "swap", label: "Swap" }, { key: "ezpeze", label: "EZ Peeze" }] : [{ key: "ezpeze", label: "EZ Peeze" }])
-                        : [{ key: "pro", label: "Pro" }, { key: "easy", label: "Easy" }, { key: "ezpeze", label: "EZ Peeze" }]
-                      ).map(m => (
-                        <button key={m.key} onClick={() => setFormMode(m.key)} style={{
-                          flex: 1, padding: "7px 0", borderRadius: 8, border: "none", cursor: "pointer",
-                          fontSize: 9, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em",
-                          background: formMode === m.key ? (theme === "dark" ? "rgba(255,255,255,0.12)" : "rgba(212,175,55,0.2)") : "transparent",
-                          color: formMode === m.key ? t.glass.text : t.glass.textTertiary,
-                          boxShadow: formMode === m.key ? (theme === "dark" ? "none" : "0 2px 8px rgba(212,175,55,0.2)") : "none",
-                          transition: "all 0.3s",
-                        }}>{m.label}</button>
-                      ))}
-                    </div>
-
-                    {(formMode === "pro" || (isZeroXPair && formMode === "swap")) ? (
-                      <>
-                        <div className="dex-buy-sell-toggle" style={{
-                          display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, padding: 4,
-                          borderRadius: "100px", background: "rgba(212,175,55,0.06)", marginBottom: 18,
-                        }}>
-                          {["buy", "sell"].map((s) => (
-                            <button key={s} onClick={() => { setSide(s); setPriceManuallyEdited(false); }} style={{
-                              padding: "12px 0", borderRadius: "100px", border: "none", cursor: "pointer",
-                              fontSize: 13, fontWeight: 700, textTransform: "uppercase", transition: "all 0.4s cubic-bezier(0.16, 1, 0.3, 1)",
-                              letterSpacing: "0.05em",
-                              ...(side === s ? {
-                                background: s === "buy" ? t.glass.green : t.glass.red,
-                                color: "#000",
-                                boxShadow: s === "buy" ? `0 6px 20px rgba(22,163,74,0.35)` : `0 6px 20px rgba(220,38,38,0.35)`,
-                                transform: "scale(1.02)",
-                              } : {
-                                background: "transparent", color: t.glass.textTertiary,
-                              }),
-                            }}>{s}</button>
-                          ))}
-                        </div>
-
-                        {!isZeroXPair && (
-                          <div style={{
-                            display: "flex", gap: 4, marginBottom: 18, padding: 4, borderRadius: "100px",
-                            background: theme === "dark" ? "rgba(255,255,255,0.04)" : "rgba(212,175,55,0.06)",
-                          }}>
-                            {["limit", "market"].map((orderT) => (
-                              <button key={orderT} onClick={() => setOrderType(orderT)} style={{
-                                flex: 1, padding: "7px 0", borderRadius: "100px", border: "none", cursor: "pointer",
-                                fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.04em",
-                                background: orderType === orderT ? (theme === "dark" ? "rgba(255,255,255,0.1)" : "rgba(212,175,55,0.18)") : "transparent",
-                                color: orderType === orderT ? t.glass.text : t.glass.textTertiary,
-                                transition: "all 0.3s cubic-bezier(0.16, 1, 0.3, 1)",
-                              }}>{orderT}</button>
+                            {["buy", "sell"].map((s) => (
+                              <button key={s} onClick={() => { setSide(s); setPriceManuallyEdited(false); }} style={{
+                                padding: "12px 0", borderRadius: "100px", border: "none", cursor: "pointer",
+                                fontSize: 13, fontWeight: 700, textTransform: "uppercase", transition: "all 0.4s cubic-bezier(0.16, 1, 0.3, 1)",
+                                letterSpacing: "0.05em",
+                                ...(side === s ? {
+                                  background: s === "buy" ? t.glass.green : t.glass.red,
+                                  color: "#000",
+                                  boxShadow: s === "buy" ? `0 6px 20px rgba(22,163,74,0.35)` : `0 6px 20px rgba(220,38,38,0.35)`,
+                                  transform: "scale(1.02)",
+                                } : {
+                                  background: "transparent", color: t.glass.textTertiary,
+                                }),
+                              }}>{s}</button>
                             ))}
                           </div>
-                        )}
 
-                        {!isZeroXPair && (
-                          <div className="dex-pay-with" style={{ marginBottom: 12 }}>
-
-                            <div style={{ fontSize: 10, color: t.glass.textTertiary, marginBottom: 6 }}>Pay With</div>
-                            <div style={{ display: "flex", gap: 3, flexWrap: "wrap" }}>
-                              {TOKENS[selectedChain]?.map((token) => (
-                                <button key={token} onClick={() => setSelectedToken(token)} style={{
-                                  padding: "5px 10px", borderRadius: 6, cursor: "pointer",
-                                  fontSize: 10, fontWeight: 600, transition: "all 0.2s",
-                                  background: selectedToken === token ? (theme === "dark" ? "rgba(255,255,255,0.1)" : "rgba(212,175,55,0.15)") : (theme === "dark" ? "rgba(255,255,255,0.03)" : "rgba(212,175,55,0.05)"),
-                                  color: selectedToken === token ? t.glass.text : t.glass.textTertiary,
-                                  border: "1px solid " + (selectedToken === token ? (theme === "dark" ? "rgba(212,175,55,0.4)" : "rgba(0,0,0,0.25)") : t.glass.border),
-                                }}>{token}</button>
+                          {!isZeroXPair && (
+                            <div style={{
+                              display: "flex", gap: 4, marginBottom: 18, padding: 4, borderRadius: "100px",
+                              background: theme === "dark" ? "rgba(255,255,255,0.04)" : "rgba(212,175,55,0.06)",
+                            }}>
+                              {["limit", "market"].map((orderT) => (
+                                <button key={orderT} onClick={() => setOrderType(orderT)} style={{
+                                  flex: 1, padding: "7px 0", borderRadius: "100px", border: "none", cursor: "pointer",
+                                  fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.04em",
+                                  background: orderType === orderT ? (theme === "dark" ? "rgba(255,255,255,0.1)" : "rgba(212,175,55,0.18)") : "transparent",
+                                  color: orderType === orderT ? t.glass.text : t.glass.textTertiary,
+                                  transition: "all 0.3s cubic-bezier(0.16, 1, 0.3, 1)",
+                                }}>{orderT}</button>
                               ))}
                             </div>
-                          </div>
-                        )}
+                          )}
 
-                        {!isZeroXPair && orderType === "limit" && (
-                          <div style={{ marginBottom: 12 }}>
-                            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, color: t.glass.textTertiary, marginBottom: 5 }}>
-                              <span>Price</span><span>mUSDC</span>
+                          {!isZeroXPair && (
+                            <div className="dex-pay-with" style={{ marginBottom: 12 }}>
+
+                              <div style={{ fontSize: 10, color: t.glass.textTertiary, marginBottom: 6 }}>Pay With</div>
+                              <div style={{ display: "flex", gap: 3, flexWrap: "wrap" }}>
+                                {TOKENS[selectedChain]?.map((token) => (
+                                  <button key={token} onClick={() => setSelectedToken(token)} style={{
+                                    padding: "5px 10px", borderRadius: 6, cursor: "pointer",
+                                    fontSize: 10, fontWeight: 600, transition: "all 0.2s",
+                                    background: selectedToken === token ? (theme === "dark" ? "rgba(255,255,255,0.1)" : "rgba(212,175,55,0.15)") : (theme === "dark" ? "rgba(255,255,255,0.03)" : "rgba(212,175,55,0.05)"),
+                                    color: selectedToken === token ? t.glass.text : t.glass.textTertiary,
+                                    border: "1px solid " + (selectedToken === token ? (theme === "dark" ? "rgba(212,175,55,0.4)" : "rgba(0,0,0,0.25)") : t.glass.border),
+                                  }}>{token}</button>
+                                ))}
+                              </div>
                             </div>
-                            <div className="order-price-row" style={{ ...t.panelInner, display: "flex", alignItems: "center", overflow: "hidden" }}>
-                              <button type="button" className="order-input-step" onClick={() => { setPrice((p) => (parseFloat(p) - 0.0001).toFixed(4)); setPriceManuallyEdited(true); }} style={{
+                          )}
+
+                          {!isZeroXPair && orderType === "limit" && (
+                            <div style={{ marginBottom: 12 }}>
+                              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, color: t.glass.textTertiary, marginBottom: 5 }}>
+                                <span>Price</span><span>mUSDC</span>
+                              </div>
+                              <div className="order-price-row" style={{ ...t.panelInner, display: "flex", alignItems: "center", overflow: "hidden" }}>
+                                <button type="button" className="order-input-step" onClick={() => { setPrice((p) => (parseFloat(p) - 0.0001).toFixed(4)); setPriceManuallyEdited(true); }} style={{
+                                  width: 44, minWidth: 44, height: 44, border: "none", background: theme === "dark" ? "rgba(255,255,255,0.03)" : "rgba(212,175,55,0.04)",
+                                  color: t.glass.textSecondary, cursor: "pointer", fontSize: 20, fontWeight: 300, flexShrink: 0,
+                                }}>−</button>
+                                <input type="text" value={price} onChange={(e) => { setPrice(e.target.value); setPriceManuallyEdited(true); }} style={{
+                                  flex: 1, padding: "9px 6px", background: "none", border: "none",
+                                  color: t.glass.text, fontSize: 13, fontWeight: 600, textAlign: "center",
+                                  fontFamily: "'SF Mono', monospace", outline: "none",
+                                }} />
+                                <button type="button" className="order-input-step" onClick={() => { setPrice((p) => (parseFloat(p) + 0.0001).toFixed(4)); setPriceManuallyEdited(true); }} style={{
+                                  width: 44, minWidth: 44, height: 44, border: "none", background: theme === "dark" ? "rgba(255,255,255,0.03)" : "rgba(212,175,55,0.06)",
+                                  color: t.glass.textSecondary, cursor: "pointer", fontSize: 20, fontWeight: 300, flexShrink: 0,
+                                }}>+</button>
+                              </div>
+                            </div>
+                          )}
+
+                          <div className="order-amount-row" style={{ marginBottom: 12 }}>
+                            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, color: t.glass.textTertiary, marginBottom: 5 }}>
+                              <span>Amount</span><span>{currentPairInfo.baseToken || "PRE"}</span>
+                            </div>
+                            <div style={{ ...t.panelInner, display: "flex", alignItems: "center", overflow: "hidden" }}>
+                              <button type="button" className="order-input-step" onClick={() => { const a = parseFloat(amount) || 0; setAmount(Math.max(0, a - 1).toString()); }} style={{
                                 width: 44, minWidth: 44, height: 44, border: "none", background: theme === "dark" ? "rgba(255,255,255,0.03)" : "rgba(212,175,55,0.04)",
                                 color: t.glass.textSecondary, cursor: "pointer", fontSize: 20, fontWeight: 300, flexShrink: 0,
                               }}>−</button>
-                              <input type="text" value={price} onChange={(e) => { setPrice(e.target.value); setPriceManuallyEdited(true); }} style={{
-                                flex: 1, padding: "9px 6px", background: "none", border: "none",
-                                color: t.glass.text, fontSize: 13, fontWeight: 600, textAlign: "center",
-                                fontFamily: "'SF Mono', monospace", outline: "none",
+                              <input type="text" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0.00" style={{
+                                flex: 1, padding: "9px 8px", background: "none", border: "none",
+                                color: t.glass.text, fontSize: 15, fontWeight: 600, fontFamily: "'SF Mono', monospace", outline: "none", textAlign: "center", minWidth: 0,
                               }} />
-                              <button type="button" className="order-input-step" onClick={() => { setPrice((p) => (parseFloat(p) + 0.0001).toFixed(4)); setPriceManuallyEdited(true); }} style={{
+                              <button type="button" className="order-input-step" onClick={() => { const a = parseFloat(amount) || 0; setAmount((a + 1).toString()); }} style={{
                                 width: 44, minWidth: 44, height: 44, border: "none", background: theme === "dark" ? "rgba(255,255,255,0.03)" : "rgba(212,175,55,0.06)",
                                 color: t.glass.textSecondary, cursor: "pointer", fontSize: 20, fontWeight: 300, flexShrink: 0,
                               }}>+</button>
                             </div>
                           </div>
-                        )}
 
-                        <div className="order-amount-row" style={{ marginBottom: 12 }}>
-                          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, color: t.glass.textTertiary, marginBottom: 5 }}>
-                            <span>Amount</span><span>{currentPairInfo.baseToken || "PRE"}</span>
-                          </div>
-                          <div style={{ ...t.panelInner, display: "flex", alignItems: "center", overflow: "hidden" }}>
-                            <button type="button" className="order-input-step" onClick={() => { const a = parseFloat(amount) || 0; setAmount(Math.max(0, a - 1).toString()); }} style={{
-                              width: 44, minWidth: 44, height: 44, border: "none", background: theme === "dark" ? "rgba(255,255,255,0.03)" : "rgba(212,175,55,0.04)",
-                              color: t.glass.textSecondary, cursor: "pointer", fontSize: 20, fontWeight: 300, flexShrink: 0,
-                            }}>−</button>
-                            <input type="text" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0.00" style={{
-                              flex: 1, padding: "9px 8px", background: "none", border: "none",
-                              color: t.glass.text, fontSize: 15, fontWeight: 600, fontFamily: "'SF Mono', monospace", outline: "none", textAlign: "center", minWidth: 0,
+                          <div className="dex-quantity-slider" style={{ marginBottom: 14, padding: "0 2px" }}>
+                            <input type="range" min="0" max="100" value={sliderValue} onChange={(e) => setSliderValue(e.target.value)} style={{
+                              width: "100%", height: 3, appearance: "none",
+                              background: `linear-gradient(to right, ${side === "buy" ? t.glass.green : t.glass.red} 0%, ${side === "buy" ? t.glass.green : t.glass.red} ${sliderValue}%, rgba(212,175,55,0.15) ${sliderValue}%, rgba(212,175,55,0.15) 100%)`,
+                              borderRadius: 3, outline: "none", cursor: "pointer",
                             }} />
-                            <button type="button" className="order-input-step" onClick={() => { const a = parseFloat(amount) || 0; setAmount((a + 1).toString()); }} style={{
-                              width: 44, minWidth: 44, height: 44, border: "none", background: theme === "dark" ? "rgba(255,255,255,0.03)" : "rgba(212,175,55,0.06)",
-                              color: t.glass.textSecondary, cursor: "pointer", fontSize: 20, fontWeight: 300, flexShrink: 0,
-                            }}>+</button>
-                          </div>
-                        </div>
-
-                        <div className="dex-quantity-slider" style={{ marginBottom: 14, padding: "0 2px" }}>
-                          <input type="range" min="0" max="100" value={sliderValue} onChange={(e) => setSliderValue(e.target.value)} style={{
-                            width: "100%", height: 3, appearance: "none",
-                            background: `linear-gradient(to right, ${side === "buy" ? t.glass.green : t.glass.red} 0%, ${side === "buy" ? t.glass.green : t.glass.red} ${sliderValue}%, rgba(212,175,55,0.15) ${sliderValue}%, rgba(212,175,55,0.15) 100%)`,
-                            borderRadius: 3, outline: "none", cursor: "pointer",
-                          }} />
-                          <div className="slider-percent-markers" style={{ display: "flex", justifyContent: "space-between", fontSize: 9, color: t.glass.textTertiary, marginTop: 4 }}>
-                            {["0%", "25%", "50%", "75%", "100%"].map((v) => (
-                              <span key={v} style={{ cursor: "pointer", padding: "4px 2px", minWidth: 28, textAlign: "center" }} onClick={() => setSliderValue(parseInt(v))}>{v}</span>
-                            ))}
-                          </div>
-                        </div>
-
-                        <div style={{ ...t.panelInner, padding: "9px 12px", marginBottom: 14, display: "flex", justifyContent: "space-between" }}>
-                          <span style={{ fontSize: 11, color: t.glass.textTertiary }}>Total</span>
-                          <span style={{ fontSize: 13, fontWeight: 700, fontFamily: "'SF Mono', monospace" }}>{total} {currentPairInfo.quoteToken || "mUSDC"}</span>
-                        </div>
-
-                        {orderError && <div style={{ fontSize: 11, color: t.glass.red, marginBottom: 8 }}>{orderError}</div>}
-                        <button
-                          className="dex-order-submit-btn"
-                          onClick={handlePlaceOrder}
-                          disabled={orderLoading}
-                          style={{
-                            width: "100%", padding: "16px 0", borderRadius: "100px", border: "none",
-                            cursor: orderLoading ? "not-allowed" : "pointer", fontSize: 15, fontWeight: 700,
-                            letterSpacing: "0.02em", transition: "all 0.4s cubic-bezier(0.16, 1, 0.3, 1)", opacity: orderLoading ? 0.5 : 1,
-                            textTransform: "uppercase",
-                            ...(side === "buy" ? {
-                              background: t.glass.green, color: "#000",
-                              boxShadow: "0 10px 30px rgba(50,215,75,0.3)",
-                            } : {
-                              background: t.glass.red, color: "#000",
-                              boxShadow: "0 10px 30px rgba(255,69,58,0.3)",
-                            }),
-                          }}
-                        >
-                          {!connected ? "Connect Wallet" : orderLoading ? (isZeroXPair ? "Swapping..." : "Placing...") : `${side.toUpperCase()} ${currentPairInfo.baseToken || "PRE"}`}
-                        </button>
-
-                        {connected && !isZeroXPair && (
-                          <div style={{ marginTop: 10, padding: "9px 0", borderTop: "1px solid " + t.glass.border, fontSize: 10, color: t.glass.textTertiary }}>
-                            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 3 }}>
-                              <span>Available {selectedToken}</span><span style={{ color: t.glass.textSecondary }}>{selectedChain === 1313161916 ? (balances[selectedToken] || "0.00") : "1,234.56"}</span>
-                            </div>
-                            <div style={{ display: "flex", justifyContent: "space-between" }}>
-                              <span>Available PRE</span><span style={{ color: t.glass.textSecondary }}>{selectedChain === 1313161916 ? (balances["PRE"] || "0.00") : "50,000.00"}</span>
+                            <div className="slider-percent-markers" style={{ display: "flex", justifyContent: "space-between", fontSize: 9, color: t.glass.textTertiary, marginTop: 4 }}>
+                              {["0%", "25%", "50%", "75%", "100%"].map((v) => (
+                                <span key={v} style={{ cursor: "pointer", padding: "4px 2px", minWidth: 28, textAlign: "center" }} onClick={() => setSliderValue(parseInt(v))}>{v}</span>
+                              ))}
                             </div>
                           </div>
-                        )}
-                      </>
-                    ) : (formMode === "easy" && !isZeroXPair) ? (
 
-                      <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 10, position: "relative" }}>
-
-                        {/* EASY MODE UI */}
-                        <div style={{ display: "flex", gap: 12, marginBottom: 12, padding: "0 4px" }}>
-                          {["swap", "limit", "buy", "sell"].map((tab) => (
-                            <div key={tab} style={{
-                              fontSize: 13, fontWeight: (tab === "buy" || tab === "sell" ? side === tab : easyTab === tab) ? 800 : 500,
-                              color: (tab === "buy" || tab === "sell" ? side === tab : easyTab === tab) ? t.glass.text : t.glass.textTertiary,
-                              cursor: "pointer", paddingBottom: 4,
-                              borderBottom: (tab === "buy" || tab === "sell" ? side === tab : easyTab === tab) ? "2px solid " + t.glass.gold : "none"
-                            }} onClick={() => {
-                              if (tab === "buy" || tab === "sell") { setSide(tab); setEasyTab(tab); }
-                              if (tab === "limit" || tab === "swap") { setOrderType(tab === "limit" ? "limit" : "market"); setEasyTab(tab); }
-                            }}>{tab.charAt(0).toUpperCase() + tab.slice(1)}</div>
-                          ))}
-                        </div>
-
-                        <div style={{ ...t.panelInner, padding: 20, borderRadius: 24, marginBottom: 4 }}>
-                          <div style={{ fontSize: 13, color: t.glass.textSecondary, marginBottom: 8, display: "flex", alignItems: "center", gap: 6 }}>
-                            When 1 <OmegaLogo width={18} height={18} theme={theme} /> <strong>PRE</strong> is worth
+                          <div style={{ ...t.panelInner, padding: "9px 12px", marginBottom: 14, display: "flex", justifyContent: "space-between" }}>
+                            <span style={{ fontSize: 11, color: t.glass.textTertiary }}>Total</span>
+                            <span style={{ fontSize: 13, fontWeight: 700, fontFamily: "'SF Mono', monospace" }}>{total} {currentPairInfo.quoteToken || "mUSDC"}</span>
                           </div>
-                          <div style={{ fontSize: 36, fontWeight: 800, color: t.glass.text, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                            {price}
-                            <span style={{ fontSize: 14, color: t.glass.textTertiary, display: "flex", alignItems: "center", gap: 6 }}>
-                              <span style={{ width: 18, height: 18, background: "rgba(255,255,255,0.1)", borderRadius: "50%", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 10 }}>$</span>
-                              {selectedToken}
-                            </span>
-                          </div>
-                          <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
-                            {["Market", "+1%", "+5%", "+10%"].map(v => (
-                              <button key={v} onClick={() => {
-                                if (v === "Market") setOrderType("market");
-                                else {
-                                  const pct = parseInt(v.replace(/\D/g, "")) || 0;
-                                  const base = parseFloat(price) || orderBook.midPrice || 0.0847;
-                                  setPrice((base * (1 + pct / 100)).toFixed(4));
-                                }
-                              }} style={{
-                                padding: "6px 12px", borderRadius: 100, border: "none", background: "rgba(255,255,255,0.06)",
-                                color: t.glass.textSecondary, fontSize: 11, fontWeight: 600, cursor: "pointer"
-                              }}>{v}</button>
+
+                          {orderError && <div style={{ fontSize: 11, color: t.glass.red, marginBottom: 8 }}>{orderError}</div>}
+                          <button
+                            className="dex-order-submit-btn"
+                            onClick={handlePlaceOrder}
+                            disabled={orderLoading}
+                            style={{
+                              width: "100%", padding: "16px 0", borderRadius: "100px", border: "none",
+                              cursor: orderLoading ? "not-allowed" : "pointer", fontSize: 15, fontWeight: 700,
+                              letterSpacing: "0.02em", transition: "all 0.4s cubic-bezier(0.16, 1, 0.3, 1)", opacity: orderLoading ? 0.5 : 1,
+                              textTransform: "uppercase",
+                              ...(side === "buy" ? {
+                                background: t.glass.green, color: "#000",
+                                boxShadow: "0 10px 30px rgba(50,215,75,0.3)",
+                              } : {
+                                background: t.glass.red, color: "#000",
+                                boxShadow: "0 10px 30px rgba(255,69,58,0.3)",
+                              }),
+                            }}
+                          >
+                            {!connected ? "Connect Wallet" : orderLoading ? (isZeroXPair ? "Swapping..." : "Placing...") : `${side.toUpperCase()} ${currentPairInfo.baseToken || "PRE"}`}
+                          </button>
+
+                          {connected && !isZeroXPair && (
+                            <div style={{ marginTop: 10, padding: "9px 0", borderTop: "1px solid " + t.glass.border, fontSize: 10, color: t.glass.textTertiary }}>
+                              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 3 }}>
+                                <span>Available {selectedToken}</span><span style={{ color: t.glass.textSecondary }}>{selectedChain === 1313161916 ? (balances[selectedToken] || "0.00") : "1,234.56"}</span>
+                              </div>
+                              <div style={{ display: "flex", justifyContent: "space-between" }}>
+                                <span>Available PRE</span><span style={{ color: t.glass.textSecondary }}>{selectedChain === 1313161916 ? (balances["PRE"] || "0.00") : "50,000.00"}</span>
+                              </div>
+                            </div>
+                          )}
+                        </>
+                      ) : (formMode === "easy" && !isZeroXPair) ? (
+
+                        <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 10, position: "relative" }}>
+
+                          {/* EASY MODE UI */}
+                          <div style={{ display: "flex", gap: 12, marginBottom: 12, padding: "0 4px" }}>
+                            {["swap", "limit", "buy", "sell"].map((tab) => (
+                              <div key={tab} style={{
+                                fontSize: 13, fontWeight: (tab === "buy" || tab === "sell" ? side === tab : easyTab === tab) ? 800 : 500,
+                                color: (tab === "buy" || tab === "sell" ? side === tab : easyTab === tab) ? t.glass.text : t.glass.textTertiary,
+                                cursor: "pointer", paddingBottom: 4,
+                                borderBottom: (tab === "buy" || tab === "sell" ? side === tab : easyTab === tab) ? "2px solid " + t.glass.gold : "none"
+                              }} onClick={() => {
+                                if (tab === "buy" || tab === "sell") { setSide(tab); setEasyTab(tab); }
+                                if (tab === "limit" || tab === "swap") { setOrderType(tab === "limit" ? "limit" : "market"); setEasyTab(tab); }
+                              }}>{tab.charAt(0).toUpperCase() + tab.slice(1)}</div>
                             ))}
                           </div>
-                        </div>
 
-                        <div style={{ position: "relative" }}>
-                          <div style={{ ...t.panelInner, padding: 20, borderRadius: 24, marginBottom: 6 }}>
-                            <div style={{ fontSize: 12, color: t.glass.textTertiary, marginBottom: 8 }}>{side === "buy" ? "Pay" : "Sell"}</div>
-                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                              <input type="text" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0" style={{
-                                background: "none", border: "none", color: t.glass.text, fontSize: 28, fontWeight: 700, width: "120px", outline: "none"
-                              }} />
-                              <div style={{
-                                background: "rgba(255,255,255,0.06)", padding: "6px 12px", borderRadius: 100,
-                                display: "flex", alignItems: "center", gap: 8, cursor: "pointer"
-                              }}>
-                                <span style={{ fontSize: 13, fontWeight: 700 }}>{side === "buy" ? "mUSDC" : "PRE"}</span>
-                                <span style={{ fontSize: 8, opacity: 0.5 }}>▼</span>
+                          <div style={{ ...t.panelInner, padding: 20, borderRadius: 24, marginBottom: 4 }}>
+                            <div style={{ fontSize: 13, color: t.glass.textSecondary, marginBottom: 8, display: "flex", alignItems: "center", gap: 6 }}>
+                              When 1 <OmegaLogo width={18} height={18} theme={theme} /> <strong>PRE</strong> is worth
+                            </div>
+                            <div style={{ fontSize: 36, fontWeight: 800, color: t.glass.text, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                              {price}
+                              <span style={{ fontSize: 14, color: t.glass.textTertiary, display: "flex", alignItems: "center", gap: 6 }}>
+                                <span style={{ width: 18, height: 18, background: "rgba(255,255,255,0.1)", borderRadius: "50%", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 10 }}>$</span>
+                                {selectedToken}
+                              </span>
+                            </div>
+                            <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
+                              {["Market", "+1%", "+5%", "+10%"].map(v => (
+                                <button key={v} onClick={() => {
+                                  if (v === "Market") setOrderType("market");
+                                  else {
+                                    const pct = parseInt(v.replace(/\D/g, "")) || 0;
+                                    const base = parseFloat(price) || orderBook.midPrice || 0.0847;
+                                    setPrice((base * (1 + pct / 100)).toFixed(4));
+                                  }
+                                }} style={{
+                                  padding: "6px 12px", borderRadius: 100, border: "none", background: "rgba(255,255,255,0.06)",
+                                  color: t.glass.textSecondary, fontSize: 11, fontWeight: 600, cursor: "pointer"
+                                }}>{v}</button>
+                              ))}
+                            </div>
+                          </div>
+
+                          <div style={{ position: "relative" }}>
+                            <div style={{ ...t.panelInner, padding: 20, borderRadius: 24, marginBottom: 6 }}>
+                              <div style={{ fontSize: 12, color: t.glass.textTertiary, marginBottom: 8 }}>{side === "buy" ? "Pay" : "Sell"}</div>
+                              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                                <input type="text" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0" style={{
+                                  background: "none", border: "none", color: t.glass.text, fontSize: 28, fontWeight: 700, width: "120px", outline: "none"
+                                }} />
+                                <div style={{
+                                  background: "rgba(255,255,255,0.06)", padding: "6px 12px", borderRadius: 100,
+                                  display: "flex", alignItems: "center", gap: 8, cursor: "pointer"
+                                }}>
+                                  <span style={{ fontSize: 13, fontWeight: 700 }}>{side === "buy" ? "mUSDC" : "PRE"}</span>
+                                  <span style={{ fontSize: 8, opacity: 0.5 }}>▼</span>
+                                </div>
+                              </div>
+                            </div>
+
+                            <div style={{
+                              position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%)",
+                              width: 32, height: 32, background: "#FFFEF9", border: "4px solid #FFF9E6",
+                              borderRadius: 12, display: "flex", alignItems: "center", justifyContent: "center",
+                              zIndex: 2, cursor: "pointer", color: t.glass.textTertiary
+                            }} onClick={() => setSide(side === "buy" ? "sell" : "buy")}>↓</div>
+
+                            <div style={{ ...t.panelInner, padding: 20, borderRadius: 24 }}>
+                              <div style={{ fontSize: 12, color: t.glass.textTertiary, marginBottom: 8 }}>{side === "buy" ? "Receive" : "Buy"}</div>
+                              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                                <div style={{ fontSize: 28, fontWeight: 700, color: t.glass.textTertiary }}>{amount && price ? (side === "buy" ? (parseFloat(amount) / parseFloat(price)).toFixed(2) : (parseFloat(amount) * parseFloat(price)).toFixed(2)) : "0"}</div>
+                                <div style={{
+                                  background: "rgba(255,255,255,0.06)", padding: "6px 12px", borderRadius: 100,
+                                  display: "flex", alignItems: "center", gap: 8, cursor: "pointer"
+                                }}>
+                                  <span style={{ fontSize: 13, fontWeight: 700 }}>{side === "buy" ? "PRE" : "mUSDC"}</span>
+                                  <span style={{ fontSize: 8, opacity: 0.5 }}>▼</span>
+                                </div>
                               </div>
                             </div>
                           </div>
+
+                          <div style={{ marginTop: 12, marginBottom: 16 }}>
+                            <div style={{ fontSize: 11, color: t.glass.textTertiary, marginBottom: 8 }}>Expiry</div>
+                            <div style={{ display: "flex", gap: 6 }}>
+                              {["1 Day", "1 Week", "1 Month", "1 Year"].map(e => (
+                                <button key={e} style={{
+                                  flex: 1, padding: "8px 0", borderRadius: 12, border: "none",
+                                  background: e === "1 Week" ? "rgba(255,255,255,0.12)" : "rgba(255,255,255,0.03)",
+                                  color: e === "1 Week" ? "#fff" : t.glass.textTertiary,
+                                  fontSize: 10, fontWeight: 600, cursor: "pointer"
+                                }}>{e}</button>
+                              ))}
+                            </div>
+                          </div>
+
+                          {orderError && <div style={{ fontSize: 11, color: t.glass.red, marginBottom: 8 }}>{orderError}</div>}
+                          <button
+                            onClick={handlePlaceOrder}
+                            disabled={orderLoading}
+                            style={{
+                              width: "100%", padding: "18px 0", borderRadius: 24, border: "none",
+                              background: "linear-gradient(135deg, #0cebeb 0%, #20e3b2 100%)",
+                              color: "#000", fontSize: 16, fontWeight: 800, cursor: connected && !orderLoading ? "pointer" : "not-allowed",
+                              boxShadow: "0 12px 30px rgba(32,227,178,0.3)", transition: "0.3s", opacity: connected && !orderLoading ? 1 : 0.5
+                            }}
+                          >
+                            {!connected ? "Connect Wallet" : orderLoading ? "Placing..." : `${side.toUpperCase()} PRE`}
+                          </button>
+
 
                           <div style={{
-                            position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%)",
-                            width: 32, height: 32, background: "#FFFEF9", border: "4px solid #FFF9E6",
-                            borderRadius: 12, display: "flex", alignItems: "center", justifyContent: "center",
-                            zIndex: 2, cursor: "pointer", color: t.glass.textTertiary
-                          }} onClick={() => setSide(side === "buy" ? "sell" : "buy")}>↓</div>
-
-                          <div style={{ ...t.panelInner, padding: 20, borderRadius: 24 }}>
-                            <div style={{ fontSize: 12, color: t.glass.textTertiary, marginBottom: 8 }}>{side === "buy" ? "Receive" : "Buy"}</div>
-                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                              <div style={{ fontSize: 28, fontWeight: 700, color: t.glass.textTertiary }}>{amount && price ? (side === "buy" ? (parseFloat(amount) / parseFloat(price)).toFixed(2) : (parseFloat(amount) * parseFloat(price)).toFixed(2)) : "0"}</div>
-                              <div style={{
-                                background: "rgba(255,255,255,0.06)", padding: "6px 12px", borderRadius: 100,
-                                display: "flex", alignItems: "center", gap: 8, cursor: "pointer"
-                              }}>
-                                <span style={{ fontSize: 13, fontWeight: 700 }}>{side === "buy" ? "PRE" : "mUSDC"}</span>
-                                <span style={{ fontSize: 8, opacity: 0.5 }}>▼</span>
-                              </div>
+                            marginTop: 12, padding: "12px 16px", borderRadius: 16,
+                            background: "rgba(255,165,0,0.05)", border: "1px solid rgba(255,165,0,0.1)",
+                            display: "flex", gap: 10, alignItems: "flex-start"
+                          }}>
+                            <span style={{ color: "orange", fontSize: 14 }}>⚠️</span>
+                            <div style={{ fontSize: 10, color: "rgba(255,165,0,0.8)", lineHeight: "1.4" }}>
+                              Limits may not execute exactly when tokens reach the specified price. <span style={{ textDecoration: "underline", cursor: "pointer" }}>Learn more</span>
                             </div>
                           </div>
                         </div>
 
-                        <div style={{ marginTop: 12, marginBottom: 16 }}>
-                          <div style={{ fontSize: 11, color: t.glass.textTertiary, marginBottom: 8 }}>Expiry</div>
-                          <div style={{ display: "flex", gap: 6 }}>
-                            {["1 Day", "1 Week", "1 Month", "1 Year"].map(e => (
-                              <button key={e} style={{
-                                flex: 1, padding: "8px 0", borderRadius: 12, border: "none",
-                                background: e === "1 Week" ? "rgba(255,255,255,0.12)" : "rgba(255,255,255,0.03)",
-                                color: e === "1 Week" ? "#fff" : t.glass.textTertiary,
-                                fontSize: 10, fontWeight: 600, cursor: "pointer"
-                              }}>{e}</button>
-                            ))}
+                      ) : (
+                        /* ═══ EZ PEEZE MODE — Price Prediction (any pair) ═══ */
+                        <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 10, position: "relative" }}>
+
+                          <div style={{ textAlign: "center", padding: "4px 0" }}>
+                            <div style={{ fontSize: 24, fontWeight: 900, letterSpacing: "-0.04em", background: "linear-gradient(135deg, #0cebeb, #20e3b2, #29ffc6)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>EZ Peeze</div>
+                            <div style={{ fontSize: 10, color: t.glass.textTertiary, marginTop: 2 }}>Will {selectedPair} go up or down?</div>
+                            <div style={{ fontSize: 9, color: t.glass.textTertiary, marginTop: 4 }}>Winners earn Omega tokens</div>
+                            {!ezPezeConfig?.escrowAddress && (
+                              <div style={{ fontSize: 9, color: "rgba(255,165,0,0.9)", marginTop: 6 }}>Escrow not configured. Set EZ_PEZE_ESCROW_PRIVATE_KEY on server.</div>
+                            )}
                           </div>
-                        </div>
 
-                        {orderError && <div style={{ fontSize: 11, color: t.glass.red, marginBottom: 8 }}>{orderError}</div>}
-                        <button
-                          onClick={handlePlaceOrder}
-                          disabled={orderLoading}
-                          style={{
-                            width: "100%", padding: "18px 0", borderRadius: 24, border: "none",
-                            background: "linear-gradient(135deg, #0cebeb 0%, #20e3b2 100%)",
-                            color: "#000", fontSize: 16, fontWeight: 800, cursor: connected && !orderLoading ? "pointer" : "not-allowed",
-                            boxShadow: "0 12px 30px rgba(32,227,178,0.3)", transition: "0.3s", opacity: connected && !orderLoading ? 1 : 0.5
-                          }}
-                        >
-                          {!connected ? "Connect Wallet" : orderLoading ? "Placing..." : `${side.toUpperCase()} PRE`}
-                        </button>
-
-
-                        <div style={{
-                          marginTop: 12, padding: "12px 16px", borderRadius: 16,
-                          background: "rgba(255,165,0,0.05)", border: "1px solid rgba(255,165,0,0.1)",
-                          display: "flex", gap: 10, alignItems: "flex-start"
-                        }}>
-                          <span style={{ color: "orange", fontSize: 14 }}>⚠️</span>
-                          <div style={{ fontSize: 10, color: "rgba(255,165,0,0.8)", lineHeight: "1.4" }}>
-                            Limits may not execute exactly when tokens reach the specified price. <span style={{ textDecoration: "underline", cursor: "pointer" }}>Learn more</span>
+                          {/* Current Price */}
+                          <div style={{ ...t.panelInner, padding: "12px 16px", borderRadius: 16, textAlign: "center" }}>
+                            <div style={{ fontSize: 9, color: t.glass.textTertiary, marginBottom: 2, textTransform: "uppercase", letterSpacing: "0.08em" }}>Current Price</div>
+                            <div style={{ fontSize: 36, fontWeight: 800, color: "#fff", fontFamily: "'SF Mono', monospace", letterSpacing: "-0.02em" }}>
+                              {nonEvmPair && (nonEvmPriceFailed || orderBook.midPrice === 0) ? "—" : (orderBook.midPrice != null && orderBook.midPrice > 0 ? orderBook.midPrice.toFixed(4) : (orderBook.midPrice?.toFixed(4) ?? "0.0847"))}
+                            </div>
+                            <div style={{ fontSize: 10, color: t.glass.textTertiary }}>{currentPairInfo.baseToken || "PRE"} / {currentPairInfo.quoteToken || "mUSDC"}</div>
                           </div>
-                        </div>
-                      </div>
 
-                    ) : (
-                      /* ═══ EZ PEEZE MODE — Price Prediction (any pair) ═══ */
-                      <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 10, position: "relative" }}>
+                          {/* Timeframe Selector */}
+                          <div>
+                            <div style={{ fontSize: 9, color: t.glass.textTertiary, marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.06em" }}>Timeframe</div>
+                            <div style={{ display: "flex", gap: 4, padding: 3, borderRadius: 10, background: "rgba(255,255,255,0.03)" }}>
+                              {[{ label: "30s", val: 30 }, { label: "1m", val: 60 }, { label: "2m", val: 120 }, { label: "5m", val: 300 }].map((tf) => (
+                                <button key={tf.val} onClick={() => setBetTimeframe(tf.val)} style={{
+                                  flex: 1, padding: "8px 0", borderRadius: 8, border: "none", cursor: "pointer",
+                                  fontSize: 11, fontWeight: 700,
+                                  background: betTimeframe === tf.val ? "rgba(255,255,255,0.15)" : "transparent",
+                                  color: betTimeframe === tf.val ? "#fff" : t.glass.textTertiary,
+                                  transition: "all 0.2s",
+                                }}>{tf.label}</button>
+                              ))}
+                            </div>
+                          </div>
 
-                        <div style={{ textAlign: "center", padding: "4px 0" }}>
-                          <div style={{ fontSize: 24, fontWeight: 900, letterSpacing: "-0.04em", background: "linear-gradient(135deg, #0cebeb, #20e3b2, #29ffc6)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>EZ Peeze</div>
-                          <div style={{ fontSize: 10, color: t.glass.textTertiary, marginTop: 2 }}>Will {selectedPair} go up or down?</div>
-                          <div style={{ fontSize: 9, color: t.glass.textTertiary, marginTop: 4 }}>Winners earn Omega tokens</div>
-                          {!ezPezeConfig?.escrowAddress && (
-                            <div style={{ fontSize: 9, color: "rgba(255,165,0,0.9)", marginTop: 6 }}>Escrow not configured. Set EZ_PEZE_ESCROW_PRIVATE_KEY on server.</div>
+                          {/* Bet Amount — stake PRE to earn Omega on any pair */}
+                          <div>
+                            <div style={{ fontSize: 9, color: t.glass.textTertiary, marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.06em" }}>Stake (PRE) · Win Omega</div>
+                            <div style={{ display: "flex", gap: 4 }}>
+                              {[50, 100, 500, 1000].map(a => (
+                                <button key={a} onClick={() => setBetAmount(String(a))} style={{
+                                  flex: 1, padding: "8px 0", borderRadius: 8, border: "none", cursor: "pointer",
+                                  fontSize: 11, fontWeight: 600,
+                                  background: betAmount === String(a) ? "rgba(255,255,255,0.15)" : "rgba(255,255,255,0.03)",
+                                  color: betAmount === String(a) ? "#fff" : t.glass.textTertiary,
+                                  transition: "all 0.2s",
+                                }}>{a}</button>
+                              ))}
+                            </div>
+                            <div style={{ ...t.panelInner, marginTop: 6, display: "flex", alignItems: "center", overflow: "hidden", borderRadius: 10 }}>
+                              <input type="text" value={betAmount} onChange={e => setBetAmount(e.target.value)} placeholder="Custom..." style={{
+                                flex: 1, padding: "8px 10px", background: "none", border: "none", color: "#fff",
+                                fontSize: 13, fontWeight: 600, outline: "none", fontFamily: "'SF Mono', monospace",
+                              }} />
+                              <span style={{ fontSize: 10, color: t.glass.textTertiary, paddingRight: 10 }}>PRE</span>
+                            </div>
+                          </div>
+
+                          {betError && (
+                            <div style={{ padding: "8px 12px", borderRadius: 10, background: "rgba(255,69,58,0.15)", border: "1px solid rgba(255,69,58,0.3)", fontSize: 11, color: t.glass.red }}>
+                              {betError}
+                            </div>
                           )}
-                        </div>
-
-                        {/* Current Price */}
-                        <div style={{ ...t.panelInner, padding: "12px 16px", borderRadius: 16, textAlign: "center" }}>
-                          <div style={{ fontSize: 9, color: t.glass.textTertiary, marginBottom: 2, textTransform: "uppercase", letterSpacing: "0.08em" }}>Current Price</div>
-                          <div style={{ fontSize: 36, fontWeight: 800, color: "#fff", fontFamily: "'SF Mono', monospace", letterSpacing: "-0.02em" }}>
-                            {nonEvmPair && (nonEvmPriceFailed || orderBook.midPrice === 0) ? "—" : (orderBook.midPrice != null && orderBook.midPrice > 0 ? orderBook.midPrice.toFixed(4) : (orderBook.midPrice?.toFixed(4) ?? "0.0847"))}
+                          {/* UP / DOWN Buttons */}
+                          <div className="ezpeze-up-down" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 4 }}>
+                            <button onClick={() => placeBet("up")} disabled={betPlacing || !ezPezeConfig?.escrowAddress} style={{
+                              padding: "20px 0", borderRadius: 16, cursor: betPlacing || !ezPezeConfig?.escrowAddress ? "not-allowed" : "pointer",
+                              background: "linear-gradient(135deg, rgba(50,215,75,0.15), rgba(50,215,75,0.08))",
+                              border: "1px solid rgba(50,215,75,0.25)",
+                              display: "flex", flexDirection: "column", alignItems: "center", gap: 4,
+                              transition: "all 0.2s", opacity: betPlacing || !ezPezeConfig?.escrowAddress ? 0.6 : 1,
+                            }}>
+                              <span style={{ fontSize: 28 }}>📈</span>
+                              <span style={{ fontSize: 16, fontWeight: 800, color: t.glass.green }}>UP</span>
+                              <span style={{ fontSize: 9, color: t.glass.textTertiary }}>Price goes higher</span>
+                            </button>
+                            <button onClick={() => placeBet("down")} disabled={betPlacing || !ezPezeConfig?.escrowAddress} style={{
+                              padding: "20px 0", borderRadius: 16, cursor: betPlacing || !ezPezeConfig?.escrowAddress ? "not-allowed" : "pointer",
+                              background: "linear-gradient(135deg, rgba(255,69,58,0.15), rgba(255,69,58,0.08))",
+                              border: "1px solid rgba(255,69,58,0.25)",
+                              display: "flex", flexDirection: "column", alignItems: "center", gap: 4,
+                              transition: "all 0.2s", opacity: betPlacing || !ezPezeConfig?.escrowAddress ? 0.6 : 1,
+                            }}>
+                              <span style={{ fontSize: 28 }}>📉</span>
+                              <span style={{ fontSize: 16, fontWeight: 800, color: t.glass.red }}>DOWN</span>
+                              <span style={{ fontSize: 9, color: t.glass.textTertiary }}>Price goes lower</span>
+                            </button>
                           </div>
-                          <div style={{ fontSize: 10, color: t.glass.textTertiary }}>{currentPairInfo.baseToken || "PRE"} / {currentPairInfo.quoteToken || "mUSDC"}</div>
-                        </div>
 
-                        {/* Timeframe Selector */}
-                        <div>
-                          <div style={{ fontSize: 9, color: t.glass.textTertiary, marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.06em" }}>Timeframe</div>
-                          <div style={{ display: "flex", gap: 4, padding: 3, borderRadius: 10, background: "rgba(255,255,255,0.03)" }}>
-                            {[{ label: "30s", val: 30 }, { label: "1m", val: 60 }, { label: "2m", val: 120 }, { label: "5m", val: 300 }].map((tf) => (
-                              <button key={tf.val} onClick={() => setBetTimeframe(tf.val)} style={{
-                                flex: 1, padding: "8px 0", borderRadius: 8, border: "none", cursor: "pointer",
-                                fontSize: 11, fontWeight: 700,
-                                background: betTimeframe === tf.val ? "rgba(255,255,255,0.15)" : "transparent",
-                                color: betTimeframe === tf.val ? "#fff" : t.glass.textTertiary,
-                                transition: "all 0.2s",
-                              }}>{tf.label}</button>
-                            ))}
-                          </div>
-                        </div>
-
-                        {/* Bet Amount — stake PRE to earn Omega on any pair */}
-                        <div>
-                          <div style={{ fontSize: 9, color: t.glass.textTertiary, marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.06em" }}>Stake (PRE) · Win Omega</div>
-                          <div style={{ display: "flex", gap: 4 }}>
-                            {[50, 100, 500, 1000].map(a => (
-                              <button key={a} onClick={() => setBetAmount(String(a))} style={{
-                                flex: 1, padding: "8px 0", borderRadius: 8, border: "none", cursor: "pointer",
-                                fontSize: 11, fontWeight: 600,
-                                background: betAmount === String(a) ? "rgba(255,255,255,0.15)" : "rgba(255,255,255,0.03)",
-                                color: betAmount === String(a) ? "#fff" : t.glass.textTertiary,
-                                transition: "all 0.2s",
-                              }}>{a}</button>
-                            ))}
-                          </div>
-                          <div style={{ ...t.panelInner, marginTop: 6, display: "flex", alignItems: "center", overflow: "hidden", borderRadius: 10 }}>
-                            <input type="text" value={betAmount} onChange={e => setBetAmount(e.target.value)} placeholder="Custom..." style={{
-                              flex: 1, padding: "8px 10px", background: "none", border: "none", color: "#fff",
-                              fontSize: 13, fontWeight: 600, outline: "none", fontFamily: "'SF Mono', monospace",
-                            }} />
-                            <span style={{ fontSize: 10, color: t.glass.textTertiary, paddingRight: 10 }}>PRE</span>
-                          </div>
-                        </div>
-
-                        {betError && (
-                          <div style={{ padding: "8px 12px", borderRadius: 10, background: "rgba(255,69,58,0.15)", border: "1px solid rgba(255,69,58,0.3)", fontSize: 11, color: t.glass.red }}>
-                            {betError}
-                          </div>
-                        )}
-                        {/* UP / DOWN Buttons */}
-                        <div className="ezpeze-up-down" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 4 }}>
-                          <button onClick={() => placeBet("up")} disabled={betPlacing || !ezPezeConfig?.escrowAddress} style={{
-                            padding: "20px 0", borderRadius: 16, cursor: betPlacing || !ezPezeConfig?.escrowAddress ? "not-allowed" : "pointer",
-                            background: "linear-gradient(135deg, rgba(50,215,75,0.15), rgba(50,215,75,0.08))",
-                            border: "1px solid rgba(50,215,75,0.25)",
-                            display: "flex", flexDirection: "column", alignItems: "center", gap: 4,
-                            transition: "all 0.2s", opacity: betPlacing || !ezPezeConfig?.escrowAddress ? 0.6 : 1,
-                          }}>
-                            <span style={{ fontSize: 28 }}>📈</span>
-                            <span style={{ fontSize: 16, fontWeight: 800, color: t.glass.green }}>UP</span>
-                            <span style={{ fontSize: 9, color: t.glass.textTertiary }}>Price goes higher</span>
-                          </button>
-                          <button onClick={() => placeBet("down")} disabled={betPlacing || !ezPezeConfig?.escrowAddress} style={{
-                            padding: "20px 0", borderRadius: 16, cursor: betPlacing || !ezPezeConfig?.escrowAddress ? "not-allowed" : "pointer",
-                            background: "linear-gradient(135deg, rgba(255,69,58,0.15), rgba(255,69,58,0.08))",
-                            border: "1px solid rgba(255,69,58,0.25)",
-                            display: "flex", flexDirection: "column", alignItems: "center", gap: 4,
-                            transition: "all 0.2s", opacity: betPlacing || !ezPezeConfig?.escrowAddress ? 0.6 : 1,
-                          }}>
-                            <span style={{ fontSize: 28 }}>📉</span>
-                            <span style={{ fontSize: 16, fontWeight: 800, color: t.glass.red }}>DOWN</span>
-                            <span style={{ fontSize: 9, color: t.glass.textTertiary }}>Price goes lower</span>
-                          </button>
-                        </div>
-
-                        {/* Active Bets */}
-                        {activeBets.length > 0 && (
-                          <div style={{ marginTop: 4 }}>
-                            <div style={{ fontSize: 9, color: t.glass.textTertiary, marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.06em" }}>Active Bets</div>
-                            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                              {activeBets.map(bet => {
-                                const isActive = bet.status === "active";
-                                const won = bet.status === "won";
-                                const borderColor = isActive ? "rgba(255,255,255,0.1)" : won ? "rgba(50,215,75,0.4)" : "rgba(255,69,58,0.4)";
-                                const bgColor = isActive ? "rgba(255,255,255,0.03)" : won ? "rgba(50,215,75,0.06)" : "rgba(255,69,58,0.06)";
-                                const mins = Math.floor(bet.remaining / 60);
-                                const secs = bet.remaining % 60;
-                                return (
-                                  <div key={bet.id} style={{
-                                    padding: "8px 12px", borderRadius: 12,
-                                    background: bgColor, border: `1px solid ${borderColor}`,
-                                    display: "flex", justifyContent: "space-between", alignItems: "center",
-                                    transition: "all 0.3s",
-                                  }}>
-                                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                                      <span style={{ fontSize: 14 }}>{bet.direction === "up" ? "📈" : "📉"}</span>
-                                      <div>
-                                        <div style={{ fontSize: 11, fontWeight: 700, color: "#fff" }}>
-                                          {bet.direction.toUpperCase()} · {bet.amount} PRE {bet.pair && bet.pair !== "PRE/mUSDC" ? `· ${bet.pair}` : ""}
-                                        </div>
-                                        <div style={{ fontSize: 9, color: t.glass.textTertiary }}>
-                                          Entry: {bet.entryPrice.toFixed(4)}
-                                          {!isActive && ` → ${bet.exitPrice.toFixed(4)}`}
+                          {/* Active Bets */}
+                          {activeBets.length > 0 && (
+                            <div style={{ marginTop: 4 }}>
+                              <div style={{ fontSize: 9, color: t.glass.textTertiary, marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.06em" }}>Active Bets</div>
+                              <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                                {activeBets.map(bet => {
+                                  const isActive = bet.status === "active";
+                                  const won = bet.status === "won";
+                                  const borderColor = isActive ? "rgba(255,255,255,0.1)" : won ? "rgba(50,215,75,0.4)" : "rgba(255,69,58,0.4)";
+                                  const bgColor = isActive ? "rgba(255,255,255,0.03)" : won ? "rgba(50,215,75,0.06)" : "rgba(255,69,58,0.06)";
+                                  const mins = Math.floor(bet.remaining / 60);
+                                  const secs = bet.remaining % 60;
+                                  return (
+                                    <div key={bet.id} style={{
+                                      padding: "8px 12px", borderRadius: 12,
+                                      background: bgColor, border: `1px solid ${borderColor}`,
+                                      display: "flex", justifyContent: "space-between", alignItems: "center",
+                                      transition: "all 0.3s",
+                                    }}>
+                                      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                                        <span style={{ fontSize: 14 }}>{bet.direction === "up" ? "📈" : "📉"}</span>
+                                        <div>
+                                          <div style={{ fontSize: 11, fontWeight: 700, color: "#fff" }}>
+                                            {bet.direction.toUpperCase()} · {bet.amount} PRE {bet.pair && bet.pair !== "PRE/mUSDC" ? `· ${bet.pair}` : ""}
+                                          </div>
+                                          <div style={{ fontSize: 9, color: t.glass.textTertiary }}>
+                                            Entry: {bet.entryPrice.toFixed(4)}
+                                            {!isActive && ` → ${bet.exitPrice.toFixed(4)}`}
+                                          </div>
                                         </div>
                                       </div>
+                                      <div style={{ textAlign: "right" }}>
+                                        {isActive ? (
+                                          <div style={{ fontSize: 16, fontWeight: 800, fontFamily: "'SF Mono', monospace", color: "#fff" }}>
+                                            {mins}:{secs.toString().padStart(2, "0")}
+                                          </div>
+                                        ) : (
+                                          <div style={{
+                                            fontSize: 13, fontWeight: 800,
+                                            color: won ? t.glass.green : t.glass.red,
+                                          }}>
+                                            {won ? "🎉 WON" : "😞 LOST"}
+                                          </div>
+                                        )}
+                                      </div>
                                     </div>
-                                    <div style={{ textAlign: "right" }}>
-                                      {isActive ? (
-                                        <div style={{ fontSize: 16, fontWeight: 800, fontFamily: "'SF Mono', monospace", color: "#fff" }}>
-                                          {mins}:{secs.toString().padStart(2, "0")}
-                                        </div>
-                                      ) : (
-                                        <div style={{
-                                          fontSize: 13, fontWeight: 800,
-                                          color: won ? t.glass.green : t.glass.red,
-                                        }}>
-                                          {won ? "🎉 WON" : "😞 LOST"}
-                                        </div>
-                                      )}
-                                    </div>
-                                  </div>
-                                );
-                              })}
+                                  );
+                                })}
+                              </div>
                             </div>
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-
-
-                  <div style={{ ...t.panel, padding: 12 }}>
-
-                    <div style={{ fontSize: 9, color: t.glass.textTertiary, marginBottom: 7, letterSpacing: "0.06em", textTransform: "uppercase" }}>Omega Network</div>
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
-                      {[
-                        { label: "Chain ID", value: "1313161916" },
-                        { label: "Gas", value: "Gasless ✦" },
-                        { label: "Explorer", value: "View ↗", link: "https://0x4e4542bc.explorer.aurora-cloud.dev" },
-                        { label: "Status", value: "● Live", color: t.glass.green },
-                      ].map((item, i) => (
-                        <div key={i} onClick={() => item.link && window.open(item.link, '_blank')} style={{ cursor: item.link ? 'pointer' : 'default' }}>
-                          <div style={{ fontSize: 8, color: t.glass.textTertiary }}>{item.label}</div>
-                          <div style={{ fontSize: 10, fontWeight: 600, color: item.color || t.glass.textSecondary }}>{item.value}</div>
+                          )}
                         </div>
-                      ))}
+                      )}
                     </div>
-                    <button
-                      onClick={wallet.switchToOmega}
-                      style={{
-                        marginTop: 10, width: "100%", padding: "6px 0", borderRadius: 8,
-                        background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)",
-                        color: "#fff", fontSize: 9, fontWeight: 600, cursor: "pointer"
-                      }}
-                    >Switch to Omega Network</button>
+
+
+                    <div style={{ ...t.panel, padding: 12 }}>
+
+                      <div style={{ fontSize: 9, color: t.glass.textTertiary, marginBottom: 7, letterSpacing: "0.06em", textTransform: "uppercase" }}>Omega Network</div>
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
+                        {[
+                          { label: "Chain ID", value: "1313161916" },
+                          { label: "Gas", value: "Gasless ✦" },
+                          { label: "Explorer", value: "View ↗", link: "https://0x4e4542bc.explorer.aurora-cloud.dev" },
+                          { label: "Status", value: "● Live", color: t.glass.green },
+                        ].map((item, i) => (
+                          <div key={i} onClick={() => item.link && window.open(item.link, '_blank')} style={{ cursor: item.link ? 'pointer' : 'default' }}>
+                            <div style={{ fontSize: 8, color: t.glass.textTertiary }}>{item.label}</div>
+                            <div style={{ fontSize: 10, fontWeight: 600, color: item.color || t.glass.textSecondary }}>{item.value}</div>
+                          </div>
+                        ))}
+                      </div>
+                      <button
+                        onClick={wallet.switchToOmega}
+                        style={{
+                          marginTop: 10, width: "100%", padding: "6px 0", borderRadius: 8,
+                          background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)",
+                          color: "#fff", fontSize: 9, fontWeight: 600, cursor: "pointer"
+                        }}
+                      >Switch to Omega Network</button>
+                    </div>
                   </div>
                 </div>
-              </div>
               )}
             </>
           )}

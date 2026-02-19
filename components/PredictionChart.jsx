@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { createChart, AreaSeries } from "lightweight-charts";
 
-const API_BASE = (import.meta.env.VITE_API_URL || import.meta.env.VITE_API_BASE || "").replace(/\/$/, "");
+const API_BASE = (import.meta.env.VITE_API_URL || import.meta.env.VITE_API_BASE || "https://olympus-api-n3xm.onrender.com").replace(/\/$/, "");
 
 /**
  * Polymarket-style price history chart using CLOB API (token_id + interval + fidelity).
