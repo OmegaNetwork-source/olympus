@@ -11,10 +11,20 @@ import { ethers } from "ethers";
 const app = express();
 const PORT = process.env.PORT || 3001;
 
+// Render does not set NODE_ENV=production by default; allow production frontend explicitly so prices work in prod
+const ALLOWED_ORIGINS = [
+  "http://localhost:5173",
+  "http://127.0.0.1:5173",
+  "https://olympus.omeganetwork.co",
+  "https://www.olympus.omeganetwork.co",
+];
+// In production mode allow any origin; otherwise use whitelist (so prod works even if NODE_ENV isn't set on Render)
 app.use(cors({
-  origin: process.env.NODE_ENV === "production"
-    ? true
-    : ["http://localhost:5173", "http://127.0.0.1:5173"],
+  origin: (origin, cb) => {
+    if (process.env.NODE_ENV === "production") return cb(null, true);
+    if (!origin || ALLOWED_ORIGINS.includes(origin)) return cb(null, true);
+    cb(null, false);
+  },
 }));
 app.use(express.json());
 
