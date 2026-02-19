@@ -403,7 +403,19 @@ app.get("/api/coingecko-price", async (req, res) => {
   }
 
   return res.status(502).json({ error: "Price unavailable", id });
-  return res.status(502).json({ error: "Price unavailable", id });
+});
+
+// Binance price proxy (no CORS from client; frontend can use when CoinGecko fails)
+app.get("/api/binance-price", async (req, res) => {
+  const symbol = (req.query.symbol || "").trim().toUpperCase();
+  if (!symbol) return res.status(400).json({ error: "Missing symbol" });
+  try {
+    const price = await fetchBinancePrice(symbol);
+    if (price != null && price > 0) return res.json({ price, symbol });
+  } catch (e) {
+    console.warn("[Price] Binance proxy failed for", symbol, e.message);
+  }
+  return res.status(502).json({ error: "Price unavailable", symbol });
 });
 
 // Fallback endpoint for non-EVM pairs (e.g. SOL/USDC) if frontend fails

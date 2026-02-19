@@ -1346,15 +1346,27 @@ export default function OmegaDEX() {
           }
           // 2. Live WebSocket price when available
           if (liveBinancePrice && liveBinancePrice > 0) mid = liveBinancePrice;
-          // 3. Binance REST in its own try/catch (browser CORS may block; must not skip CoinGecko)
+          // 3. Backend Binance proxy (no CORS); then client Binance REST as last resort
           if (mid <= 0) {
-            try {
-              const sym = getBinanceSymbol(cgId, zeroxPair.baseToken);
-              if (sym) {
-                const r = await fetch(`https://api.binance.com/api/v3/ticker/price?symbol=${sym.toUpperCase()}`);
-                if (r.ok) { const d = await r.json(); mid = parseFloat(d.price); }
-              }
-            } catch (_) { }
+            const sym = getBinanceSymbol(cgId, zeroxPair.baseToken);
+            if (sym && API_BASE) {
+              try {
+                const r = await fetch(`${API_BASE}/api/binance-price?symbol=${encodeURIComponent(sym.toUpperCase())}`);
+                if (r.ok) {
+                  const d = await r.json().catch(() => ({}));
+                  const p = d?.price != null ? Number(d.price) : NaN;
+                  if (Number.isFinite(p) && p > 0) mid = p;
+                }
+              } catch (_) { }
+            }
+            if (mid <= 0) {
+              try {
+                if (sym) {
+                  const r = await fetch(`https://api.binance.com/api/v3/ticker/price?symbol=${sym.toUpperCase()}`);
+                  if (r.ok) { const d = await r.json(); mid = parseFloat(d.price); }
+                }
+              } catch (_) { }
+            }
           }
         }
         if (mid <= 0) {
@@ -1414,15 +1426,27 @@ export default function OmegaDEX() {
             }
             // 2. Live WebSocket when available
             if (liveBinancePrice && liveBinancePrice > 0) priceNum = liveBinancePrice;
-            // 3. Binance REST in its own try/catch (CORS may block)
+            // 3. Backend Binance proxy then client Binance REST
             if (!Number.isFinite(priceNum) || priceNum <= 0) {
-              try {
-                const sym = getBinanceSymbol(cgId, nonEvmPair.baseToken);
-                if (sym) {
-                  const r = await fetch(`https://api.binance.com/api/v3/ticker/price?symbol=${sym.toUpperCase()}`);
-                  if (r.ok) { const d = await r.json(); priceNum = parseFloat(d.price); }
-                }
-              } catch (_) { }
+              const sym = getBinanceSymbol(cgId, nonEvmPair.baseToken);
+              if (sym && API_BASE) {
+                try {
+                  const r = await fetch(`${API_BASE}/api/binance-price?symbol=${encodeURIComponent(sym.toUpperCase())}`);
+                  if (r.ok) {
+                    const d = await r.json().catch(() => ({}));
+                    const p = d?.price != null ? Number(d.price) : NaN;
+                    if (Number.isFinite(p) && p > 0) priceNum = p;
+                  }
+                } catch (_) { }
+              }
+              if (!Number.isFinite(priceNum) || priceNum <= 0) {
+                try {
+                  if (sym) {
+                    const r = await fetch(`https://api.binance.com/api/v3/ticker/price?symbol=${sym.toUpperCase()}`);
+                    if (r.ok) { const d = await r.json(); priceNum = parseFloat(d.price); }
+                  }
+                } catch (_) { }
+              }
             }
           }
           if (!Number.isFinite(priceNum) || priceNum < 0) {
@@ -1498,11 +1522,20 @@ export default function OmegaDEX() {
     priceFeedRetryRef.current.timer = t;
     return () => clearTimeout(t);
   }, [apiError, zeroxPair, loadData]);
-  // Force re-render when live price updates to keep UI snappy
+  // When we have a live Binance price, push it to orderBook and clear error so header/EZ Peeze show it even if loadData failed (e.g. backend down)
   useEffect(() => {
-    if (liveBinancePrice && liveBinancePrice > 0) {
-      loadData();
-    }
+    if (!(liveBinancePrice && liveBinancePrice > 0) || !(zeroxPair || nonEvmPair)) return;
+    const spread = liveBinancePrice * 0.0005;
+    setOrderBook({
+      midPrice: liveBinancePrice,
+      asks: [{ price: liveBinancePrice + spread, amount: 100, total: 100 * (liveBinancePrice + spread) }],
+      bids: [{ price: liveBinancePrice - spread, amount: 100, total: 100 * (liveBinancePrice - spread) }],
+    });
+    setApiError(null);
+  }, [liveBinancePrice, zeroxPair, nonEvmPair]);
+  // Also re-run loadData when live price arrives (may get CoinGecko/0x and full book)
+  useEffect(() => {
+    if (liveBinancePrice && liveBinancePrice > 0) loadData();
   }, [liveBinancePrice]);
 
   useEffect(() => {
