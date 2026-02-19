@@ -1487,11 +1487,11 @@ export default function OmegaDEX() {
               asks: [{ price: mid + spread, amount: 100, cumulative: 100 }],
             });
           } else {
-            setOrderBook({ asks: [], bids: [], midPrice: 0 });
+            setOrderBook((prev) => (prev.midPrice > 0 ? prev : { asks: [], bids: [], midPrice: 0 }));
           }
         } catch (_) {
           setNonEvmPriceFailed(true);
-          setOrderBook({ asks: [], bids: [], midPrice: 0 });
+          setOrderBook((prev) => (prev.midPrice > 0 ? prev : { asks: [], bids: [], midPrice: 0 }));
         }
       } else {
         const [ob, tr, dp] = await Promise.all([
@@ -1505,11 +1505,13 @@ export default function OmegaDEX() {
       }
     } catch (e) {
       setApiError(e.message || "Price temporarily unavailable");
+      // Don't wipe a valid price when a later loadData run fails (e.g. interval retry or liveBinancePrice deps) — avoids "works then stops"
       if (zeroxPair) {
-        setOrderBook({ asks: [], bids: [], midPrice: 0 });
-        setDepthData({ bids: [], asks: [] });
+        setOrderBook((prev) => (prev.midPrice > 0 ? prev : { asks: [], bids: [], midPrice: 0 }));
+        setDepthData((prev) => (prev?.bids?.length || prev?.asks?.length ? prev : { bids: [], asks: [] }));
       } else if (nonEvmPair) {
         setNonEvmPriceFailed(true);
+        setOrderBook((prev) => (prev.midPrice > 0 ? prev : { asks: [], bids: [], midPrice: 0 }));
       }
     }
   }, [selectedPair, zeroxPair, nonEvmPair, wallet.address, liveBinancePrice, API_BASE]);
