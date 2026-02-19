@@ -496,8 +496,15 @@ app.get("/api/coingecko-market", async (req, res) => {
   if (cached && Date.now() - cached.ts < COINGECKO_MARKET_CACHE_TTL_MS) {
     return res.json({ ...cached.data, id });
   }
-  const data = await fetchCoingeckoMarket(id);
-  if (data) {
+  let data = await fetchCoingeckoMarket(id);
+  // Fallback: if /coins/markets fails (rate limit, timeout), try simple price so frontend at least gets a price
+  if (!data?.price) {
+    const price = await fetchCoingeckoPrice(id);
+    if (price != null && price > 0) {
+      data = { price, volume24h: null, high24h: null, low24h: null, changePercent24h: null, marketCap: null, marketCapRank: null, ath: null, athChangePercent: null, athDate: null, atl: null, atlChangePercent: null, atlDate: null, circulatingSupply: null, totalSupply: null, maxSupply: null, fullyDilutedValuation: null, lastUpdated: null };
+    }
+  }
+  if (data?.price) {
     coingeckoMarketCache.set(id, { data, ts: Date.now() });
     return res.json({ ...data, id });
   }
