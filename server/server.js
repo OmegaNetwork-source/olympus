@@ -1141,14 +1141,19 @@ app.get("/api/prediction/markets", async (req, res) => {
       } catch { return []; }
     };
 
-    // Fan out: more trending/new + key tags so the list doesn’t feel empty
+    // Fan out: trending, new, and many tags for broad coverage (more APIs = fuller list)
     const fetches = [
-      fetchEventsPage("limit=50&order=volume24hr&ascending=false", "trending"),
-      fetchEventsPage("limit=25&order=startDate&ascending=false", "new"),
-      fetchEventsPage("limit=40&order=volume24hr&ascending=false&tag_slug=politics", "category"),
-      fetchEventsPage("limit=40&order=volume24hr&ascending=false&tag_slug=crypto", "category"),
-      fetchEventsPage("limit=40&order=volume24hr&ascending=false&tag_slug=sports", "category"),
-      fetchEventsPage("limit=30&order=volume24hr&ascending=false&tag_slug=ai", "category"),
+      fetchEventsPage("limit=60&order=volume24hr&ascending=false", "trending"),
+      fetchEventsPage("limit=30&order=startDate&ascending=false", "new"),
+      fetchEventsPage("limit=50&order=volume24hr&ascending=false&tag_slug=politics", "category"),
+      fetchEventsPage("limit=50&order=volume24hr&ascending=false&tag_slug=crypto", "category"),
+      fetchEventsPage("limit=50&order=volume24hr&ascending=false&tag_slug=sports", "category"),
+      fetchEventsPage("limit=40&order=volume24hr&ascending=false&tag_slug=ai", "category"),
+      fetchEventsPage("limit=40&order=volume24hr&ascending=false&tag_slug=business", "category"),
+      fetchEventsPage("limit=40&order=volume24hr&ascending=false&tag_slug=finance", "category"),
+      fetchEventsPage("limit=35&order=volume24hr&ascending=false&tag_slug=geopolitics", "category"),
+      fetchEventsPage("limit=35&order=volume24hr&ascending=false&tag_slug=culture", "category"),
+      fetchEventsPage("limit=30&order=volume24hr&ascending=false&tag_slug=elections", "category"),
     ];
 
     const results = await Promise.all(fetches);

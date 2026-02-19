@@ -2759,10 +2759,35 @@ export default function OmegaDEX() {
                   {/* Markets grid */}
                   <div style={{ padding: "16px 24px", height: "calc(100% - 56px)", overflow: "auto", background: theme === "dark" ? "#0d0d0f" : "#faf8f3" }}>
                     {predictionLoading ? (
-                      <div style={{ padding: 48, textAlign: "center", color: t.glass.textTertiary }}>
-                        <div style={{ fontSize: 32, marginBottom: 12 }}>⏳</div>
-                        <div style={{ fontSize: 13 }}>Loading markets…</div>
-                      </div>
+                      <>
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 10, marginBottom: 24, color: t.glass.textTertiary }}>
+                          <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#d4af37", animation: "loading-pulse 1.2s ease-in-out infinite" }} />
+                          <span style={{ fontSize: 13, fontWeight: 600 }}>Prediction Markets Incoming</span>
+                          <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#d4af37", animation: "loading-pulse 1.2s ease-in-out infinite", animationDelay: "0.2s" }} />
+                        </div>
+                        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 12 }}>
+                          {Array.from({ length: 12 }).map((_, i) => (
+                            <div key={i} className="prediction-skeleton-card" style={{
+                              borderRadius: 12, overflow: "hidden", border: "1px solid " + t.glass.border,
+                              background: theme === "dark" ? "rgba(255,255,255,0.04)" : "rgba(255,255,255,0.7)", padding: "16px 18px",
+                            }}>
+                              <div style={{ display: "flex", gap: 12, marginBottom: 12 }}>
+                                <div style={{ width: 48, height: 48, borderRadius: 10, background: theme === "dark" ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.06)", flexShrink: 0 }} />
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                  <div style={{ height: 14, borderRadius: 4, background: theme === "dark" ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.08)", marginBottom: 8, maxWidth: "90%" }} />
+                                  <div style={{ height: 14, borderRadius: 4, background: theme === "dark" ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.06)", maxWidth: "70%" }} />
+                                  <div style={{ height: 10, borderRadius: 4, background: theme === "dark" ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.05)", marginTop: 8, width: 80 }} />
+                                </div>
+                              </div>
+                              <div style={{ height: 6, borderRadius: 100, background: theme === "dark" ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.06)", marginBottom: 14 }} />
+                              <div style={{ display: "flex", gap: 8 }}>
+                                <div style={{ flex: 1, height: 36, borderRadius: 8, background: theme === "dark" ? "rgba(34,197,94,0.15)" : "rgba(34,197,94,0.12)" }} />
+                                <div style={{ flex: 1, height: 36, borderRadius: 8, background: theme === "dark" ? "rgba(239,68,68,0.15)" : "rgba(239,68,68,0.12)" }} />
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </>
                     ) : filteredMarkets.length === 0 ? (
                       <div style={{ padding: 48, textAlign: "center", color: t.glass.textTertiary }}>
                         <div style={{ fontSize: 32, marginBottom: 12 }}>📊</div>
@@ -4229,6 +4254,16 @@ export default function OmegaDEX() {
           from { transform: translate(0, 0) scale(1); }
           to { transform: translate(100px, 50px) scale(1.1); }
         }
+        @keyframes skeleton-shimmer {
+          0% { opacity: 0.4; }
+          50% { opacity: 0.8; }
+          100% { opacity: 0.4; }
+        }
+        @keyframes loading-pulse {
+          0%, 100% { transform: scale(1); opacity: 1; }
+          50% { transform: scale(1.02); opacity: 0.85; }
+        }
+        .prediction-skeleton-card { animation: skeleton-shimmer 1.8s ease-in-out infinite; }
         * { box-sizing: border-box; margin: 0; padding: 0; }
         ::-webkit-scrollbar { display: none; }
         * { -ms-overflow-style: none; scrollbar-width: none; }
