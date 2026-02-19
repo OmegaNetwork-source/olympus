@@ -273,40 +273,110 @@ app.get("/api/debug-0x", (req, res) => {
   res.json({ zeroxKeySet: !!ZEROX_KEY, zeroxKeyLength: ZEROX_KEY ? ZEROX_KEY.length : 0 });
 });
 
-// CoinGecko simple price (for 0x fallback: when 0x fails, client can show price from here)
+// ─── Price Fallback (CoinGecko -> Binance -> Hardcoded) ───
 const coingeckoPriceCache = new Map(); // id -> { price, ts }
 const COINGECKO_CACHE_TTL_MS = 60 * 1000;
-async function fetchCoingeckoPrice(id) {
-  const r = await fetch(
-    `https://api.coingecko.com/api/v3/simple/price?ids=${encodeURIComponent(id)}&vs_currencies=usd`,
-    { headers: { Accept: "application/json", "User-Agent": "OmegaDEX/1.0 (https://olympus.omeganetwork.co)" } }
-  );
-  const data = await r.json();
-  const price = data?.[id]?.usd;
-  return typeof price === "number" ? price : null;
+
+// Map CoinGecko IDs to Binance Symbols for fallback
+const CG_TO_BINANCE = {
+  "ethereum": "ETHUSDT",
+  "bitcoin": "BTCUSDT",
+  "solana": "SOLUSDT",
+  "ripple": "XRPUSDT",
+  "matic-network": "MATICUSDT",
+  "arbitrum": "ARBUSDT",
+  "optimism": "OPUSDT",
+  "avalanche-2": "AVAXUSDT",
+  "binancecoin": "BNBUSDT",
+  "dogecoin": "DOGEUSDT",
+  "chainlink": "LINKUSDT",
+  "uniswap": "UNIUSDT",
+  "aave": "AAVEUSDT",
+  "cardano": "ADAUSDT",
+  "polkadot": "DOTUSDT",
+  "shiba-inu": "SHIBUSDT",
+  "pepe": "PEPEUSDT",
+  "fetch-ai": "FETUSDT",
+  "render-token": "RNDRUSDT",
+  "near": "NEARUSDT",
+  "aptos": "APTUSDT",
+  "sui": "SUIUSDT",
+  "sei-network": "SEIUSDT",
+  "celestia": "TIAUSDT",
+  "injective-protocol": "INJUSDT",
+  "fantom": "FTMUSDT",
+  "the-open-network": "TONUSDT",
+  "bonk": "BONKUSDT",
+  "floki": "FLOKIUSDT",
+  "dogwifhat": "WIFUSDT",
+  "worldcoin": "WLDUSDT",
+};
+
+async function fetchBinancePrice(symbol) {
+  try {
+    const r = await fetch(`https://api.binance.com/api/v3/ticker/price?symbol=${symbol}`);
+    if (!r.ok) return null;
+    const data = await r.json();
+    return parseFloat(data.price);
+  } catch { return null; }
 }
+
+async function fetchCoingeckoPrice(id) {
+  // 1. Try CoinGecko
+  try {
+    const r = await fetch(
+      `https://api.coingecko.com/api/v3/simple/price?ids=${encodeURIComponent(id)}&vs_currencies=usd`,
+      { headers: { Accept: "application/json", "User-Agent": "OmegaDEX/1.0" } }
+    );
+    if (r.ok) {
+      const data = await r.json();
+      const price = data?.[id]?.usd;
+      if (typeof price === "number") return price;
+    }
+  } catch (e) {
+    console.warn("[Price] CoinGecko failed for", id, e.message);
+  }
+
+  // 2. Try Binance Fallback
+  const binanceSymbol = CG_TO_BINANCE[id];
+  if (binanceSymbol) {
+    try {
+      const price = await fetchBinancePrice(binanceSymbol);
+      if (price) {
+        console.log("[Price] Used Binance fallback for", id, price);
+        return price;
+      }
+    } catch (_) { }
+  }
+
+  return null;
+}
+
 app.get("/api/coingecko-price", async (req, res) => {
   const id = (req.query.id || req.query.coingeckoId || "").trim().toLowerCase();
-  if (!id) return res.status(400).json({ error: "Missing id (CoinGecko token id)" });
+  if (!id) return res.status(400).json({ error: "Missing id" });
+
+  // Check cache
   const cached = coingeckoPriceCache.get(id);
   if (cached && Date.now() - cached.ts < COINGECKO_CACHE_TTL_MS && cached.price != null) {
     return res.json({ price: cached.price, id });
   }
-  try {
-    let price = await fetchCoingeckoPrice(id);
-    if (price == null) {
-      await new Promise((r) => setTimeout(r, 1200));
-      price = await fetchCoingeckoPrice(id);
-    }
-    if (price != null) {
-      coingeckoPriceCache.set(id, { price, ts: Date.now() });
-      return res.json({ price, id });
-    }
-    return res.status(502).json({ error: "Price not available", id });
-  } catch (e) {
-    console.warn("[coingecko-price]", id, e.message);
-    return res.status(502).json({ error: e.message || "CoinGecko failed", id });
+
+  // Fetch fresh
+  let price = await fetchCoingeckoPrice(id);
+
+  // Retry once if null
+  if (price == null) {
+    await new Promise((r) => setTimeout(r, 800));
+    price = await fetchCoingeckoPrice(id);
   }
+
+  if (price != null) {
+    coingeckoPriceCache.set(id, { price, ts: Date.now() });
+    return res.json({ price, id });
+  }
+
+  return res.status(502).json({ error: "Price unavailable", id });
 });
 
 // Crypto news – Google News RSS search for " ticker crypto" (e.g. "ETH crypto")
@@ -1290,7 +1360,7 @@ app.get("/api/prediction/chart", async (req, res) => {
         console.error("Chart fetch error", e);
         return [];
       }
-      };
+    };
 
     const [yesHist, noHist] = await Promise.all([
       fetchHistory(yesTokenId),
