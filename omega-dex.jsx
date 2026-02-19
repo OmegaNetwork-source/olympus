@@ -1519,7 +1519,7 @@ export default function OmegaDEX() {
     }
   }, [selectedPair, zeroxPair, nonEvmPair]);
 
-  // Header price + 24h stats: when user selects a symbol (zerox or nonEvm), call market API and show price + vol/high/low
+  // Header price + 24h stats: try price endpoint first so we show price ASAP, then market for 24h stats
   useEffect(() => {
     const pair = zeroxPair || nonEvmPair;
     if (!pair) return;
@@ -1528,15 +1528,10 @@ export default function OmegaDEX() {
     let cancelled = false;
     setApiError(null);
     (async () => {
-      let market = await fetchMarketFromBackend(cgId);
+      // 1) Try simple price first (fewer rate limits) so we show price immediately
+      let p = await fetchPriceFromBackend(cgId);
       if (cancelled) return;
-      if (!market?.price) {
-        const p = await fetchPriceFromBackend(cgId);
-        if (cancelled) return;
-        market = p != null && p > 0 ? { price: p, volume24h: null, high24h: null, low24h: null, changePercent24h: null } : null;
-      }
-      if (market?.price) {
-        const p = market.price;
+      if (Number.isFinite(p) && p > 0) {
         const spread = p * 0.0005;
         setOrderBook({
           midPrice: p,
@@ -1547,6 +1542,25 @@ export default function OmegaDEX() {
         setDepthData({
           bids: [{ price: p - spread, amount: 100, cumulative: 100 }],
           asks: [{ price: p + spread, amount: 100, cumulative: 100 }],
+        });
+        setNonEvmPriceFailed(false);
+        setMarketStats({ volume24h: null, high24h: null, low24h: null, changePercent24h: null, marketCap: null, marketCapRank: null, ath: null, athChangePercent: null, athDate: null, atl: null, atlChangePercent: null, atlDate: null, circulatingSupply: null, totalSupply: null, maxSupply: null, fullyDilutedValuation: null, lastUpdated: null });
+      }
+      // 2) Then get full market data (24h stats, ATH, etc.) and merge
+      let market = await fetchMarketFromBackend(cgId);
+      if (cancelled) return;
+      if (!market?.price && Number.isFinite(p) && p > 0) market = { price: p, volume24h: null, high24h: null, low24h: null, changePercent24h: null };
+      if (market?.price) {
+        const price = market.price;
+        const spread = price * 0.0005;
+        setOrderBook({
+          midPrice: price,
+          asks: [{ price: price + spread, amount: 100, total: 100 * (price + spread) }],
+          bids: [{ price: price - spread, amount: 100, total: 100 * (price - spread) }],
+        });
+        setDepthData({
+          bids: [{ price: price - spread, amount: 100, cumulative: 100 }],
+          asks: [{ price: price + spread, amount: 100, cumulative: 100 }],
         });
         setNonEvmPriceFailed(false);
         setMarketStats({
@@ -1568,7 +1582,7 @@ export default function OmegaDEX() {
           fullyDilutedValuation: market.fullyDilutedValuation ?? null,
           lastUpdated: market.lastUpdated ?? null,
         });
-      } else {
+      } else if (!(Number.isFinite(p) && p > 0)) {
         setApiError("Price temporarily unavailable");
         setNonEvmPriceFailed(!!nonEvmPair);
         setMarketStats(null);
