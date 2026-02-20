@@ -396,6 +396,18 @@ const BINANCE_TO_CG = Object.fromEntries(
   Object.entries(CG_TO_BINANCE).map(([id, sym]) => [sym, id])
 );
 
+// CoinGecko id -> CoinPaprika ticker id (fallback when CoinGecko/Binance fail from Render)
+const CG_TO_CP = {
+  "ethereum": "eth-ethereum", "bitcoin": "btc-bitcoin", "solana": "sol-solana", "ripple": "xrp-xrp",
+  "matic-network": "matic-polygon", "arbitrum": "arb-arbitrum", "optimism": "op-optimism", "avalanche-2": "avax-avalanche",
+  "binancecoin": "bnb-binance-coin", "dogecoin": "doge-dogecoin", "chainlink": "link-chainlink", "uniswap": "uni-uniswap",
+  "aave": "aave-aave", "cardano": "ada-cardano", "polkadot": "dot-polkadot", "shiba-inu": "shib-shiba-inu",
+  "pepe": "pepe-pepe", "fetch-ai": "fet-fetch", "render-token": "rndr-render-token", "near": "near-protocol",
+  "aptos": "apt-aptos", "sui": "sui-sui", "bonk": "bonk-bonk", "floki": "floki-floki", "dogwifhat": "wif-dogwifhat",
+  "lido-dao": "ldo-lido-dao", "curve-dao-token": "crv-curve-dao-token", "the-sandbox": "sand-the-sandbox",
+  "decentraland": "mana-decentraland", "apecoin": "ape-apecoin", "blockstack": "stx-stacks",
+};
+
 const BINANCE_FETCH_MS = 10000;
 async function fetchBinancePrice(symbol) {
   try {
@@ -510,16 +522,28 @@ app.get("/api/coingecko-market", async (req, res) => {
     coingeckoMarketCache.set(id, { data, ts: Date.now() });
     return res.json({ ...data, id });
   }
-  // Fallback: CoinGecko often rate-limits or fails from Render; use Binance for at least price
+  // Fallback: CoinGecko often rate-limits from Render; try Binance then CoinPaprika
   const binanceSymbol = CG_TO_BINANCE[id];
   if (binanceSymbol) {
     const price = await fetchBinancePrice(binanceSymbol);
     if (price != null && price > 0) {
+      console.log("[Price] market fallback Binance ok", id);
       data = { price, volume24h: null, high24h: null, low24h: null, changePercent24h: null, marketCap: null, marketCapRank: null, ath: null, athChangePercent: null, athDate: null, atl: null, atlChangePercent: null, atlDate: null, circulatingSupply: null, totalSupply: null, maxSupply: null, fullyDilutedValuation: null, lastUpdated: null };
       coingeckoMarketCache.set(id, { data, ts: Date.now() });
       return res.json({ ...data, id });
     }
   }
+  const cpId = CG_TO_CP[id];
+  if (cpId) {
+    const price = await fetchCoinPaprikaPrice(cpId);
+    if (price != null && price > 0) {
+      console.log("[Price] market fallback CoinPaprika ok", id);
+      data = { price, volume24h: null, high24h: null, low24h: null, changePercent24h: null, marketCap: null, marketCapRank: null, ath: null, athChangePercent: null, athDate: null, atl: null, atlChangePercent: null, atlDate: null, circulatingSupply: null, totalSupply: null, maxSupply: null, fullyDilutedValuation: null, lastUpdated: null };
+      coingeckoMarketCache.set(id, { data, ts: Date.now() });
+      return res.json({ ...data, id });
+    }
+  }
+  console.warn("[Price] market all failed", id);
   return res.status(502).json({ error: "Market data unavailable", id });
 });
 
@@ -540,9 +564,14 @@ app.get("/api/coingecko-price", async (req, res) => {
     price = await fetchCoingeckoPrice(id);
   }
 
-  // Fallback: CoinGecko often rate-limits from Render; use Binance so production still gets a price
+  // Fallback: CoinGecko often rate-limits from Render; try Binance then CoinPaprika
   if (price == null && CG_TO_BINANCE[id]) {
     price = await fetchBinancePrice(CG_TO_BINANCE[id]);
+    if (price != null && price > 0) console.log("[Price] coingecko-price fallback Binance ok", id);
+  }
+  if (price == null && CG_TO_CP[id]) {
+    price = await fetchCoinPaprikaPrice(CG_TO_CP[id]);
+    if (price != null && price > 0) console.log("[Price] coingecko-price fallback CoinPaprika ok", id);
   }
 
   if (price != null && price > 0) {
@@ -550,6 +579,7 @@ app.get("/api/coingecko-price", async (req, res) => {
     return res.json({ price, id });
   }
 
+  console.warn("[Price] coingecko-price all failed", id);
   return res.status(502).json({ error: "Price unavailable", id });
 });
 
