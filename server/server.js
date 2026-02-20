@@ -339,7 +339,7 @@ app.get("/api/price", async (req, res) => {
 
 // ─── Price Fallback (CoinGecko -> Binance -> Hardcoded) ───
 const coingeckoPriceCache = new Map(); // id -> { price, ts }
-const COINGECKO_CACHE_TTL_MS = 60 * 1000;
+const COINGECKO_CACHE_TTL_MS = 5 * 60 * 1000; // 5 min so we don't hammer APIs from Render
 
 // Map CoinGecko IDs to Binance Symbols for fallback
 const CG_TO_BINANCE = {
@@ -446,43 +446,49 @@ async function fetchCoinPaprikaPrice(coinId) {
   }
 }
 
-// CoinGecko only — no Binance/other fallbacks so display stays consistent and avoids geo-block/cascading failures
+// CoinGecko only — same request that works locally and in your other apps
+const COINGECKO_HEADERS = {
+  Accept: "application/json",
+  "User-Agent": "Mozilla/5.0 (compatible; OmegaDEX/1.0; +https://olympus.omeganetwork.co)",
+};
+
 async function fetchCoingeckoPrice(id) {
+  const url = `https://api.coingecko.com/api/v3/simple/price?ids=${encodeURIComponent(id)}&vs_currencies=usd`;
   try {
-    const r = await fetch(
-      `https://api.coingecko.com/api/v3/simple/price?ids=${encodeURIComponent(id)}&vs_currencies=usd`,
-      { headers: { Accept: "application/json", "User-Agent": "OmegaDEX/1.0" } }
-    );
-    if (r.ok) {
-      const data = await r.json();
-      const price = data?.[id]?.usd;
-      if (typeof price === "number" && price > 0) return price;
-    } else {
-      // 429 = rate limit (common from Render); 403 = blocked
-      console.warn("[Price] CoinGecko price non-ok for", id, "status", r.status);
+    const r = await fetch(url, { headers: COINGECKO_HEADERS });
+    const text = await r.text();
+    if (!r.ok) {
+      console.warn("[CoinGecko] price non-ok", id, "status", r.status, "body", text.slice(0, 200));
+      return null;
     }
+    const data = JSON.parse(text);
+    const price = data?.[id]?.usd;
+    if (typeof price === "number" && price > 0) return price;
+    console.warn("[CoinGecko] price missing or invalid", id, "body", text.slice(0, 150));
   } catch (e) {
-    console.warn("[Price] CoinGecko failed for", id, e.message);
+    console.warn("[CoinGecko] price error", id, e.message);
   }
   return null;
 }
 
 const coingeckoMarketCache = new Map();
-const COINGECKO_MARKET_CACHE_TTL_MS = 90 * 1000;
+const COINGECKO_MARKET_CACHE_TTL_MS = 5 * 60 * 1000; // 5 min
 
 async function fetchCoingeckoMarket(id) {
+  const url = `https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=${encodeURIComponent(id)}&per_page=1`;
   try {
-    const r = await fetch(
-      `https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=${encodeURIComponent(id)}&per_page=1`,
-      { headers: { Accept: "application/json", "User-Agent": "OmegaDEX/1.0" } }
-    );
+    const r = await fetch(url, { headers: COINGECKO_HEADERS });
+    const text = await r.text();
     if (!r.ok) {
-      console.warn("[Price] CoinGecko market non-ok for", id, "status", r.status);
+      console.warn("[CoinGecko] market non-ok", id, "status", r.status, "body", text.slice(0, 200));
       return null;
     }
-    const arr = await r.json();
+    const arr = JSON.parse(text);
     const m = Array.isArray(arr) && arr[0] ? arr[0] : null;
-    if (!m) return null;
+    if (!m) {
+      console.warn("[CoinGecko] market empty array or no first item", id, "body", text.slice(0, 150));
+      return null;
+    }
     const price = m.current_price != null ? Number(m.current_price) : null;
     const volume24h = m.total_volume != null ? Number(m.total_volume) : null;
     const high24h = m.high_24h != null ? Number(m.high_24h) : null;
@@ -511,7 +517,7 @@ async function fetchCoingeckoMarket(id) {
       lastUpdated: str(m.last_updated),
     };
   } catch (e) {
-    console.warn("[Price] CoinGecko market failed for", id, e.message);
+    console.warn("[CoinGecko] market error", id, e.message);
     return null;
   }
 }
@@ -523,33 +529,11 @@ app.get("/api/coingecko-market", async (req, res) => {
   if (cached && Date.now() - cached.ts < COINGECKO_MARKET_CACHE_TTL_MS) {
     return res.json({ ...cached.data, id });
   }
-  let data = await fetchCoingeckoMarket(id);
+  const data = await fetchCoingeckoMarket(id);
   if (data) {
     coingeckoMarketCache.set(id, { data, ts: Date.now() });
     return res.json({ ...data, id });
   }
-  // Fallback: CoinGecko often rate-limits from Render; try Binance then CoinPaprika
-  const binanceSymbol = CG_TO_BINANCE[id];
-  if (binanceSymbol) {
-    const price = await fetchBinancePrice(binanceSymbol);
-    if (price != null && price > 0) {
-      console.log("[Price] market fallback Binance ok", id);
-      data = { price, volume24h: null, high24h: null, low24h: null, changePercent24h: null, marketCap: null, marketCapRank: null, ath: null, athChangePercent: null, athDate: null, atl: null, atlChangePercent: null, atlDate: null, circulatingSupply: null, totalSupply: null, maxSupply: null, fullyDilutedValuation: null, lastUpdated: null };
-      coingeckoMarketCache.set(id, { data, ts: Date.now() });
-      return res.json({ ...data, id });
-    }
-  }
-  const cpId = CG_TO_CP[id];
-  if (cpId) {
-    const price = await fetchCoinPaprikaPrice(cpId);
-    if (price != null && price > 0) {
-      console.log("[Price] market fallback CoinPaprika ok", id);
-      data = { price, volume24h: null, high24h: null, low24h: null, changePercent24h: null, marketCap: null, marketCapRank: null, ath: null, athChangePercent: null, athDate: null, atl: null, atlChangePercent: null, atlDate: null, circulatingSupply: null, totalSupply: null, maxSupply: null, fullyDilutedValuation: null, lastUpdated: null };
-      coingeckoMarketCache.set(id, { data, ts: Date.now() });
-      return res.json({ ...data, id });
-    }
-  }
-  console.warn("[Price] market all failed", id);
   return res.status(502).json({ error: "Market data unavailable", id });
 });
 
@@ -563,29 +547,16 @@ app.get("/api/coingecko-price", async (req, res) => {
     return res.json({ price: cached.price, id });
   }
 
-  // Fetch fresh from CoinGecko
   let price = await fetchCoingeckoPrice(id);
   if (price == null) {
     await new Promise((r) => setTimeout(r, 800));
     price = await fetchCoingeckoPrice(id);
   }
 
-  // Fallback: CoinGecko often rate-limits from Render; try Binance then CoinPaprika
-  if (price == null && CG_TO_BINANCE[id]) {
-    price = await fetchBinancePrice(CG_TO_BINANCE[id]);
-    if (price != null && price > 0) console.log("[Price] coingecko-price fallback Binance ok", id);
-  }
-  if (price == null && CG_TO_CP[id]) {
-    price = await fetchCoinPaprikaPrice(CG_TO_CP[id]);
-    if (price != null && price > 0) console.log("[Price] coingecko-price fallback CoinPaprika ok", id);
-  }
-
   if (price != null && price > 0) {
     coingeckoPriceCache.set(id, { price, ts: Date.now() });
     return res.json({ price, id });
   }
-
-  console.warn("[Price] coingecko-price all failed", id);
   return res.status(502).json({ error: "Price unavailable", id });
 });
 
