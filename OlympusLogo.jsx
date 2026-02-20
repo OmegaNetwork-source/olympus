@@ -56,15 +56,14 @@ export default function OlympusLogo({ theme }) {
 
             {/* Main Text */}
             <h1 style={{
-                fontFamily: "'Inter', system-ui, sans-serif",
-                fontSize: 32, fontWeight: 900, letterSpacing: "0.15em",
-                margin: 0, padding: 0, textTransform: "uppercase",
-                background: theme === "dark"
-                    ? "linear-gradient(180deg, #ffffff 0%, #e0e0e0 100%)"
-                    : "linear-gradient(180deg, #1a1a1a 0%, #444 100%)",
-                WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent",
-                filter: lightning ? "drop-shadow(0 0 25px rgba(255,255,255,0.8))" : "drop-shadow(0 4px 20px rgba(0,0,0,0.2))",
-                transition: "filter 0.1s ease-out",
+                fontFamily: "'-apple-system', 'BlinkMacSystemFont', 'SF Pro Display', 'Segoe UI', 'Roboto', 'Helvetica', 'Arial', sans-serif",
+                fontSize: 38, fontWeight: 800, letterSpacing: "-0.05em",
+                margin: 0, padding: 0, textTransform: "none",
+                color: theme === "dark" ? "#ffffff" : "#1a1a1a",
+                textShadow: lightning
+                    ? (theme === "dark" ? "0 0 25px rgba(255,255,255,0.8)" : "0 0 25px rgba(0,0,0,0.2)")
+                    : (theme === "dark" ? "0 4px 20px rgba(0,0,0,0.4)" : "none"),
+                transition: "text-shadow 0.1s ease-out",
                 position: "relative", zIndex: 2
             }}>
                 Olympus

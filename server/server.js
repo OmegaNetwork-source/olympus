@@ -196,10 +196,31 @@ function matchOrder(ob, incoming) {
   return executions;
 }
 
-// Seed initial order book for a pair
+// Seed initial order book for a pair (include i=0 so spread is "full" at the touch)
 function seedOrderBook(ob, pairId, mid = 0.0847) {
+  const tick = 0.0001;
+  const halfTick = tick / 2;
+  // Level 0: one bid and one ask right around mid so the spread is full (no gap at mid price)
+  addToBook(ob, {
+    id: uuidv4(),
+    address: "0x" + "1".repeat(40),
+    side: "buy",
+    price: mid - halfTick - Math.random() * 0.00002,
+    amount: Math.floor(Math.random() * 30000) + 5000,
+    filled: 0,
+    timestamp: Date.now(),
+  });
+  addToBook(ob, {
+    id: uuidv4(),
+    address: "0x" + "2".repeat(40),
+    side: "sell",
+    price: mid + halfTick + Math.random() * 0.00002,
+    amount: Math.floor(Math.random() * 30000) + 5000,
+    filled: 0,
+    timestamp: Date.now(),
+  });
   for (let i = 1; i <= 12; i++) {
-    const bidPrice = mid - i * 0.0001 - Math.random() * 0.00005;
+    const bidPrice = mid - i * tick - Math.random() * 0.00005;
     addToBook(ob, {
       id: uuidv4(),
       address: "0x" + "1".repeat(40),
@@ -211,7 +232,7 @@ function seedOrderBook(ob, pairId, mid = 0.0847) {
     });
   }
   for (let i = 1; i <= 12; i++) {
-    const askPrice = mid + i * 0.0001 + Math.random() * 0.00005;
+    const askPrice = mid + i * tick + Math.random() * 0.00005;
     addToBook(ob, {
       id: uuidv4(),
       address: "0x" + "2".repeat(40),
@@ -291,6 +312,36 @@ app.get("/api/health", (req, res) => {
 // Debug: confirm 0x key is loaded (do not use in production for sensitive data)
 app.get("/api/debug-0x", (req, res) => {
   res.json({ zeroxKeySet: !!ZEROX_KEY, zeroxKeyLength: ZEROX_KEY ? ZEROX_KEY.length : 0 });
+});
+
+// Uniswap Trading API proxy (backup for swaps when 0x fails) - https://docs.uniswap.org/trading-api
+const UNISWAP_KEY = (process.env.UNISWAP_API_KEY || process.env.VITE_UNISWAP_API_KEY || "").trim();
+if (!UNISWAP_KEY) console.warn("[Uniswap] No API key set (UNISWAP_API_KEY). Uniswap fallback will not work.");
+else console.log("[Uniswap] API key is set (swap fallback enabled).");
+
+const UNISWAP_BASE = "https://trade.api.uniswap.org/v1";
+app.post("/api/uniswap/quote", async (req, res) => {
+  if (!UNISWAP_KEY) return res.status(503).json({ error: "Uniswap API key not configured" });
+  try {
+    const headers = { "x-api-key": UNISWAP_KEY, "Content-Type": "application/json" };
+    const r = await fetch(`${UNISWAP_BASE}/quote`, { method: "POST", headers, body: JSON.stringify(req.body || {}) });
+    const data = await r.json().catch(() => ({}));
+    res.status(r.status).json(data);
+  } catch (e) {
+    res.status(502).json({ error: e.message || "Uniswap quote proxy error" });
+  }
+});
+
+app.post("/api/uniswap/swap", async (req, res) => {
+  if (!UNISWAP_KEY) return res.status(503).json({ error: "Uniswap API key not configured" });
+  try {
+    const headers = { "x-api-key": UNISWAP_KEY, "Content-Type": "application/json" };
+    const r = await fetch(`${UNISWAP_BASE}/swap`, { method: "POST", headers, body: JSON.stringify(req.body || {}) });
+    const data = await r.json().catch(() => ({}));
+    res.status(r.status).json(data);
+  } catch (e) {
+    res.status(502).json({ error: e.message || "Uniswap swap proxy error" });
+  }
 });
 
 // Unified price for zerox pairs: 0x → CoinGecko → CoinPaprika → Binance. One request from frontend.
@@ -1266,6 +1317,55 @@ app.post("/api/referral/claim-referrer", async (req, res) => {
   res.json({ message: `Claimed ${claimable} PRE`, txHash: payout.txHash, claimed: claimable });
 });
 
+// ─── Earn tasks: pre-Omega rewards (e.g. watch Omega Music video) ───
+const EARN_FILE = path.join(process.cwd(), "data", "earn.json");
+const EARN_OMEGA_MUSIC_AMOUNT = 10; // PRE per completion
+
+let earnData = { omegaMusic: {} };
+function loadEarn() {
+  ensureDataDir();
+  if (fs.existsSync(EARN_FILE)) {
+    try {
+      earnData = JSON.parse(fs.readFileSync(EARN_FILE, "utf8"));
+      if (!earnData.omegaMusic) earnData.omegaMusic = {};
+    } catch (e) { /* ignore */ }
+  }
+}
+function saveEarn() {
+  ensureDataDir();
+  fs.writeFileSync(EARN_FILE, JSON.stringify(earnData, null, 2));
+}
+loadEarn();
+
+app.get("/api/earn/me", (req, res) => {
+  const address = (req.query.address || "").toLowerCase();
+  if (!address || !ethers.isAddress(address)) return res.status(400).json({ error: "Valid address required" });
+  const omegaMusic = earnData.omegaMusic[address] || null;
+  res.json({
+    omegaMusic: omegaMusic ? { claimed: true, txHash: omegaMusic.txHash, claimedAt: omegaMusic.claimedAt, amount: omegaMusic.amount } : { claimed: false },
+  });
+});
+
+app.post("/api/earn/claim-omega-music", async (req, res) => {
+  const address = (req.body.address || "").toLowerCase();
+  if (!address || !ethers.isAddress(address)) return res.status(400).json({ error: "Valid wallet address required" });
+  const existing = earnData.omegaMusic[address];
+  if (existing) {
+    return res.json({ message: "Already claimed", txHash: existing.txHash, claimed: existing.amount, alreadyClaimed: true });
+  }
+  const payout = await referralPayout(address, EARN_OMEGA_MUSIC_AMOUNT);
+  if (!payout.ok) {
+    return res.status(503).json({ error: payout.error || "Payout failed. Try again later." });
+  }
+  earnData.omegaMusic[address] = { txHash: payout.txHash, claimedAt: Date.now(), amount: EARN_OMEGA_MUSIC_AMOUNT };
+  saveEarn();
+  res.json({
+    message: `Claimed ${EARN_OMEGA_MUSIC_AMOUNT} PRE`,
+    txHash: payout.txHash,
+    claimed: EARN_OMEGA_MUSIC_AMOUNT,
+  });
+});
+
 app.post("/api/referral/admin/generate-initial-codes", (req, res) => {
   const adminAddr = (req.headers["x-admin-address"] || req.body?.adminAddress || "").toLowerCase();
   if (adminAddr !== ADMIN_WALLET) return res.status(403).json({ error: "Admin wallet required" });
@@ -1440,13 +1540,19 @@ async function payoutWinner(address, amountPre) {
     return { ok: false, error: "Payout not configured" };
   }
   try {
+    const amountNum = Number(amountPre);
+    if (!Number.isFinite(amountNum) || amountNum <= 0) {
+      console.error("[EZ PEZE] Invalid payout amount:", amountPre);
+      return { ok: false, error: "Invalid payout amount" };
+    }
     const provider = new ethers.JsonRpcProvider(OMEGA_RPC);
     const signer = new ethers.Wallet(EZ_ESCROW_KEY, provider);
     const preAbi = ["function transfer(address to, uint256 amount) returns (bool)"];
     const pre = new ethers.Contract(PRE_ADDRESS, preAbi, signer);
-    const wei = ethers.parseUnits(String(amountPre), 18);
+    const wei = ethers.parseUnits(amountNum.toFixed(18), 18);
     const tx = await pre.transfer(address, wei);
     await tx.wait();
+    console.log("[EZ PEZE] Sent", amountNum, "PRE to", address, "tx:", tx.hash);
     return { ok: true, txHash: tx.hash };
   } catch (e) {
     console.error("[EZ PEZE] Payout error:", e.message);
@@ -1476,14 +1582,34 @@ setInterval(async () => {
     bet.exitPrice = exitPrice;
     bet.resolvedAt = now;
     if (won) {
-      const payoutAmount = bet.amount * 1.5; // 1.5x
+      // Payout = stake × multiplier. Off (1x) or missing = 1.5x; 5/10/15x = that multiple of stake.
+      const rawLeverage = bet.leverage != null && bet.leverage !== "" ? Number(bet.leverage) : NaN;
+      const mult = (Number.isFinite(rawLeverage) && [5, 10, 15].includes(rawLeverage))
+        ? rawLeverage
+        : 1.5;
+      const stake = Number(bet.amount);
+      if (!Number.isFinite(stake) || stake <= 0) {
+        console.error("[EZ PEZE] Invalid bet.amount for payout:", bet.id, bet.amount);
+        bet.status = "lost";
+        bet.payoutError = "Invalid amount";
+        saveEzBets();
+        broadcast({ type: "ezpeze", bet });
+        continue;
+      }
+      const payoutAmount = Math.max(0, stake * mult);
+      if (payoutAmount <= stake && mult === 1) {
+        console.warn("[EZ PEZE] Paying only stake (1x) for bet id=%s – stored leverage was %s", bet.id, bet.leverage);
+      }
+      console.log("[EZ PEZE] Payout: betId=%s stake=%s leverage=%s mult=%s payout=%s", bet.id, stake, bet.leverage, mult, payoutAmount);
+      bet.payoutAmount = payoutAmount;
       payoutWinner(bet.address, payoutAmount).then((r) => {
         bet.payoutTxHash = r.txHash || null;
         bet.payoutError = r.error || null;
         saveEzBets();
         broadcast({ type: "ezpeze", bet });
-      }).catch(() => {
-        bet.payoutError = "Payout failed";
+      }).catch((err) => {
+        bet.payoutError = err?.message || "Payout failed";
+        console.error("[EZ PEZE] Payout failed:", bet.id, bet.payoutError);
         saveEzBets();
         broadcast({ type: "ezpeze", bet });
       });
@@ -1502,13 +1628,18 @@ app.get("/api/ezpeze/config", (req, res) => {
   });
 });
 
+const EZ_PEZE_LEVERAGES = [1, 5, 10, 15];
+
 app.post("/api/ezpeze/bet", async (req, res) => {
-  const { address, amount, direction, timeframe, pair, txHash, entryPrice: reqEntryPrice } = req.body;
+  const { address, amount, direction, timeframe, pair, txHash, entryPrice: reqEntryPrice, leverage: reqLeverage } = req.body;
   if (!address || !amount || !direction || !txHash) {
     return res.status(400).json({ error: "Missing address, amount, direction, or txHash" });
   }
   const amt = parseFloat(amount);
   const tf = parseInt(timeframe, 10) || 60;
+  // Only store leverage when explicitly valid; missing/invalid => undefined so resolve uses 1.5x (legacy), never default to 1x
+  const levNum = reqLeverage !== undefined && reqLeverage !== null && reqLeverage !== "" ? Number(reqLeverage) : NaN;
+  const leverage = Number.isFinite(levNum) && EZ_PEZE_LEVERAGES.includes(levNum) ? levNum : undefined;
   if (amt <= 0 || !["up", "down"].includes(String(direction).toLowerCase())) {
     return res.status(400).json({ error: "Invalid amount or direction" });
   }
@@ -1546,7 +1677,9 @@ app.post("/api/ezpeze/bet", async (req, res) => {
     placedAt: Date.now(),
     txHash,
     status: "active",
+    leverage,
   };
+  console.log("[EZ PEZE] Bet placed: id=%s amount=%s leverage=%s (stored)", bet.id, amt, leverage ?? "undefined→1.5x");
   ezBets.set(bet.id, bet);
   saveEzBets();
   broadcast({ type: "ezpeze", bet });
