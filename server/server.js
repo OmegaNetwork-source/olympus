@@ -446,16 +446,23 @@ async function fetchCoinPaprikaPrice(coinId) {
   }
 }
 
-// CoinGecko only — same request that works locally and in your other apps
-const COINGECKO_HEADERS = {
-  Accept: "application/json",
-  "User-Agent": "Mozilla/5.0 (compatible; OmegaDEX/1.0; +https://olympus.omeganetwork.co)",
-};
+// CoinGecko: free tier = strict rate limit from Render's IP. Pro API key = higher limits (set COINGECKO_API_KEY in Render).
+const COINGECKO_API_KEY = (process.env.COINGECKO_API_KEY || process.env.CG_PRO_API_KEY || "").trim();
+const COINGECKO_BASE = COINGECKO_API_KEY ? "https://pro-api.coingecko.com/api/v3" : "https://api.coingecko.com/api/v3";
+
+function getCoingeckoHeaders() {
+  const h = {
+    Accept: "application/json",
+    "User-Agent": "Mozilla/5.0 (compatible; OmegaDEX/1.0; +https://olympus.omeganetwork.co)",
+  };
+  if (COINGECKO_API_KEY) h["x-cg-pro-api-key"] = COINGECKO_API_KEY;
+  return h;
+}
 
 async function fetchCoingeckoPrice(id) {
-  const url = `https://api.coingecko.com/api/v3/simple/price?ids=${encodeURIComponent(id)}&vs_currencies=usd`;
+  const url = `${COINGECKO_BASE}/simple/price?ids=${encodeURIComponent(id)}&vs_currencies=usd`;
   try {
-    const r = await fetch(url, { headers: COINGECKO_HEADERS });
+    const r = await fetch(url, { headers: getCoingeckoHeaders() });
     const text = await r.text();
     if (!r.ok) {
       console.warn("[CoinGecko] price non-ok", id, "status", r.status, "body", text.slice(0, 200));
@@ -473,11 +480,122 @@ async function fetchCoingeckoPrice(id) {
 
 const coingeckoMarketCache = new Map();
 const COINGECKO_MARKET_CACHE_TTL_MS = 5 * 60 * 1000; // 5 min
+// In-flight dedupe: only one fetch per id at a time (avoids burst 429)
+const coingeckoMarketInFlight = new Map(); // id -> Promise<data>
+
+// Free fallbacks when CoinGecko 429s (no API key): CoinCap, Kraken
+const EMPTY_MARKET = { volume24h: null, high24h: null, low24h: null, changePercent24h: null, marketCap: null, marketCapRank: null, ath: null, athChangePercent: null, athDate: null, atl: null, atlChangePercent: null, atlDate: null, circulatingSupply: null, totalSupply: null, maxSupply: null, fullyDilutedValuation: null, lastUpdated: null };
+
+async function fetchCoinCapPrice(id) {
+  try {
+    const r = await fetch(`https://api.coincap.io/v2/assets/${encodeURIComponent(id)}`, { headers: { Accept: "application/json" } });
+    if (!r.ok) return null;
+    const j = await r.json();
+    const p = j?.data?.priceUsd;
+    const price = p != null ? parseFloat(p) : NaN;
+    return Number.isFinite(price) && price > 0 ? price : null;
+  } catch (e) {
+    return null;
+  }
+}
+
+// Kraken pair format (Kraken uses XBT for Bitcoin)
+const CG_TO_KRAKEN_PAIR = {
+  bitcoin: "XBTUSD", ethereum: "ETHUSD", solana: "SOLUSD", ripple: "XRPUSD", "matic-network": "MATICUSD",
+  arbitrum: "ARBUSD", optimism: "OPUSD", "avalanche-2": "AVAXUSD", binancecoin: "BNBUSD", dogecoin: "DOGEUSD",
+  chainlink: "LINKUSD", uniswap: "UNIUSD", aave: "AAVEUSD", cardano: "ADAUSD", polkadot: "DOTUSD",
+  "shiba-inu": "SHIBUSD", pepe: "PEPEUSD", "fetch-ai": "FETUSD", "render-token": "RNDRUSD", near: "NEARUSD",
+  aptos: "APTUSD", sui: "SUIUSD", "sei-network": "SEIUSD", bonk: "BONKUSD", floki: "FLOKIUSD",
+  dogwifhat: "WIFUSD", worldcoin: "WLDUSD", "jupiter-exchange-solana": "JUPUSD", "pyth-network": "PYTHUSD",
+};
+
+async function fetchKrakenPrice(pair) {
+  try {
+    const r = await fetch(`https://api.kraken.com/0/public/Ticker?pair=${encodeURIComponent(pair)}`, { headers: { Accept: "application/json" } });
+    if (!r.ok) return null;
+    const j = await r.json();
+    const result = j?.result;
+    if (!result || j.error?.length) return null;
+    const key = Object.keys(result)[0];
+    const ticker = result[key];
+    if (!ticker?.c?.[0]) return null;
+    const price = parseFloat(ticker.c[0]);
+    return Number.isFinite(price) && price > 0 ? price : null;
+  } catch (e) {
+    return null;
+  }
+}
+
+async function fetchKrakenPriceByCgId(id) {
+  const pair = CG_TO_KRAKEN_PAIR[id];
+  if (!pair) return null;
+  return fetchKrakenPrice(pair);
+}
+
+const CG_TO_KUCOIN = {
+  bitcoin: "BTC-USDT", ethereum: "ETH-USDT", solana: "SOL-USDT", aave: "AAVE-USDT", cardano: "ADA-USDT",
+  "matic-network": "MATIC-USDT", arbitrum: "ARB-USDT", optimism: "OP-USDT", "avalanche-2": "AVAX-USDT",
+  dogecoin: "DOGE-USDT", chainlink: "LINK-USDT", uniswap: "UNI-USDT", polkadot: "DOT-USDT",
+  "shiba-inu": "SHIB-USDT", pepe: "PEPE-USDT", bonk: "BONK-USDT", aptos: "APT-USDT", sui: "SUI-USDT",
+  near: "NEAR-USDT", "fetch-ai": "FET-USDT", "render-token": "RNDR-USDT",
+};
+
+async function fetchKuCoinPrice(symbol) {
+  try {
+    const r = await fetch(`https://api.kucoin.com/api/v1/market/orderbook/level1?symbol=${encodeURIComponent(symbol)}`, { headers: { Accept: "application/json" } });
+    if (!r.ok) return null;
+    const j = await r.json();
+    const p = j?.data?.price;
+    const price = p != null ? parseFloat(p) : NaN;
+    return Number.isFinite(price) && price > 0 ? price : null;
+  } catch (e) {
+    return null;
+  }
+}
+
+const CG_TO_OKX = {
+  bitcoin: "BTC-USDT", ethereum: "ETH-USDT", solana: "SOL-USDT", aave: "AAVE-USDT", cardano: "ADA-USDT",
+  "matic-network": "MATIC-USDT", arbitrum: "ARB-USDT", optimism: "OP-USDT", "avalanche-2": "AVAX-USDT",
+  dogecoin: "DOGE-USDT", chainlink: "LINK-USDT", uniswap: "UNI-USDT", polkadot: "DOT-USDT",
+  pepe: "PEPE-USDT", aptos: "APT-USDT", sui: "SUI-USDT", near: "NEAR-USDT",
+};
+
+async function fetchOKXPrice(instId) {
+  try {
+    const r = await fetch(`https://www.okx.com/api/v5/market/ticker?instId=${encodeURIComponent(instId)}`, { headers: { Accept: "application/json" } });
+    if (!r.ok) return null;
+    const j = await r.json();
+    const last = j?.data?.[0]?.last;
+    const price = last != null ? parseFloat(last) : NaN;
+    return Number.isFinite(price) && price > 0 ? price : null;
+  } catch (e) {
+    return null;
+  }
+}
+
+const CG_TO_BITFINEX = {
+  bitcoin: "tBTCUSD", ethereum: "tETHUSD", solana: "tSOLUSD", aave: "tAAVE:USD", cardano: "tADAUSD",
+  "matic-network": "tMATIC:USD", arbitrum: "tARB:USD", dogecoin: "tDOGE:USD", chainlink: "tLINK:USD",
+  uniswap: "tUNI:USD", polkadot: "tDOT:USD", "avalanche-2": "tAVAX:USD",
+};
+
+async function fetchBitfinexPrice(symbol) {
+  try {
+    const r = await fetch(`https://api-pub.bitfinex.com/v2/ticker/${encodeURIComponent(symbol)}`, { headers: { Accept: "application/json" } });
+    if (!r.ok) return null;
+    const arr = await r.json();
+    if (!Array.isArray(arr) || arr.length < 7) return null;
+    const price = parseFloat(arr[6]); // last price
+    return Number.isFinite(price) && price > 0 ? price : null;
+  } catch (e) {
+    return null;
+  }
+}
 
 async function fetchCoingeckoMarket(id) {
-  const url = `https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=${encodeURIComponent(id)}&per_page=1`;
+  const url = `${COINGECKO_BASE}/coins/markets?vs_currency=usd&ids=${encodeURIComponent(id)}&per_page=1`;
   try {
-    const r = await fetch(url, { headers: COINGECKO_HEADERS });
+    const r = await fetch(url, { headers: getCoingeckoHeaders() });
     const text = await r.text();
     if (!r.ok) {
       console.warn("[CoinGecko] market non-ok", id, "status", r.status, "body", text.slice(0, 200));
@@ -522,6 +640,47 @@ async function fetchCoingeckoMarket(id) {
   }
 }
 
+// Try CoinGecko first; on 429/fail use free no-key APIs: CoinCap, Kraken, KuCoin, OKX
+async function fetchMarketWithFallbacks(id) {
+  let data = await fetchCoingeckoMarket(id);
+  if (data) return data;
+  let price = await fetchCoinCapPrice(id);
+  if (price != null && price > 0) {
+    console.log("[Price] market fallback CoinCap ok", id);
+    return { price, ...EMPTY_MARKET };
+  }
+  price = await fetchKrakenPriceByCgId(id);
+  if (price != null && price > 0) {
+    console.log("[Price] market fallback Kraken ok", id);
+    return { price, ...EMPTY_MARKET };
+  }
+  const kucoinSym = CG_TO_KUCOIN[id];
+  if (kucoinSym) {
+    price = await fetchKuCoinPrice(kucoinSym);
+    if (price != null && price > 0) {
+      console.log("[Price] market fallback KuCoin ok", id);
+      return { price, ...EMPTY_MARKET };
+    }
+  }
+  const okxInst = CG_TO_OKX[id];
+  if (okxInst) {
+    price = await fetchOKXPrice(okxInst);
+    if (price != null && price > 0) {
+      console.log("[Price] market fallback OKX ok", id);
+      return { price, ...EMPTY_MARKET };
+    }
+  }
+  const bfxSym = CG_TO_BITFINEX[id];
+  if (bfxSym) {
+    price = await fetchBitfinexPrice(bfxSym);
+    if (price != null && price > 0) {
+      console.log("[Price] market fallback Bitfinex ok", id);
+      return { price, ...EMPTY_MARKET };
+    }
+  }
+  return null;
+}
+
 app.get("/api/coingecko-market", async (req, res) => {
   const id = (req.query.id || req.query.coingeckoId || "").trim().toLowerCase();
   if (!id) return res.status(400).json({ error: "Missing id" });
@@ -529,7 +688,12 @@ app.get("/api/coingecko-market", async (req, res) => {
   if (cached && Date.now() - cached.ts < COINGECKO_MARKET_CACHE_TTL_MS) {
     return res.json({ ...cached.data, id });
   }
-  const data = await fetchCoingeckoMarket(id);
+  let promise = coingeckoMarketInFlight.get(id);
+  if (!promise) {
+    promise = fetchMarketWithFallbacks(id).finally(() => coingeckoMarketInFlight.delete(id));
+    coingeckoMarketInFlight.set(id, promise);
+  }
+  const data = await promise;
   if (data) {
     coingeckoMarketCache.set(id, { data, ts: Date.now() });
     return res.json({ ...data, id });
