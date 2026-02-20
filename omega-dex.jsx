@@ -2,7 +2,6 @@ import React, { useState, useEffect, useRef, useCallback, useMemo, createContext
 import { createPortal } from "react-dom";
 import { ethers } from "ethers";
 import OmegaLogo from "./OmegaLogo.jsx";
-import Casino from "./Casino.jsx";
 import OlympusLogo from "./OlympusLogo.jsx";
 import { useWallet } from "./lib/useWallet.js";
 import {
@@ -23,9 +22,14 @@ import {
   fetchEzPezeConfig,
   placeEzPezeBet,
   fetchEzPezeBets,
+  fetchReferralMe,
+  claimReferralReferee,
+  claimReferralReferrer,
+  generateInitialReferralCodes,
 } from "./lib/api.js";
 import { fetchPredictionMarkets, fetchPredictionEvent } from "./lib/predictionApi.js";
 import { placePolymarketOrder } from "./lib/polymarketOrder.js";
+import { createMarket as wagerCreateMarket, fundMarket as wagerFundMarket, getWagerContract } from "./lib/wagerContract.js";
 import {
   getQuote, getQuoteForBuyAmount,
   ETH_NATIVE, USDC_ETH, USDT_ETH, DAI_ETH, WBTC_ETH, LINK_ETH, UNI_ETH, AAVE_ETH, CRV_ETH, MKR_ETH,
@@ -886,10 +890,10 @@ function formatPriceForDisplay(price) {
   return p.toExponential(2);
 }
 
-// Always return a string for Current Price so the UI is never blank.
-function getCurrentPriceDisplay(orderBook, nonEvmPair, nonEvmPriceFailed, stockPair) {
+// Always return a string for Current Price so the UI is never blank. viewOnlyPair = stock | commodity | forex (chart+quote only).
+function getCurrentPriceDisplay(orderBook, nonEvmPair, nonEvmPriceFailed, viewOnlyPair) {
   if (nonEvmPair && (nonEvmPriceFailed || orderBook?.midPrice === 0)) return "\u2014"; // em dash
-  if (stockPair && (orderBook?.midPrice == null || orderBook?.midPrice === 0)) return "\u2014"; // loading or failed
+  if (viewOnlyPair && (orderBook?.midPrice == null || orderBook?.midPrice === 0)) return "\u2014"; // loading or failed (stock/commodity/forex)
   const p = orderBook?.midPrice;
   if (p != null && Number(p) > 0) return formatPriceForDisplay(p);
   return "0.0000";
@@ -1196,6 +1200,51 @@ const STOCK_PAIRS = [
   { id: "066570/USD", baseToken: "LG Electronics", quoteToken: "USD", tradingViewSymbol: "KRX:066570", stockSymbol: "066570.KS", logoDomain: "lg.com", logoUrl: "https://upload.wikimedia.org/wikipedia/commons/b/b8/2021_LG_logo.svg" },
 ];
 
+// Commodities: TradingView + Yahoo. icon = emoji for list and pair bar
+const COMMODITY_PAIRS = [
+  { id: "GOLD/USD", baseToken: "Gold", quoteToken: "USD", tradingViewSymbol: "TVC:GOLD", quoteSymbol: "GC=F", icon: "🥇" },
+  { id: "SILVER/USD", baseToken: "Silver", quoteToken: "USD", tradingViewSymbol: "TVC:SILVER", quoteSymbol: "SI=F", icon: "🥈" },
+  { id: "COPPER/USD", baseToken: "Copper", quoteToken: "USD", tradingViewSymbol: "COMEX:HG1!", quoteSymbol: "HG=F", icon: "🟤" },
+  { id: "CRUDE/USD", baseToken: "Crude Oil", quoteToken: "USD", tradingViewSymbol: "TVC:USOIL", quoteSymbol: "CL=F", icon: "🛢️" },
+  { id: "NATGAS/USD", baseToken: "Natural Gas", quoteToken: "USD", tradingViewSymbol: "NYMEX:NG1!", quoteSymbol: "NG=F", icon: "⛽" },
+  { id: "PLATINUM/USD", baseToken: "Platinum", quoteToken: "USD", tradingViewSymbol: "NYMEX:PL1!", quoteSymbol: "PL=F", icon: "💎" },
+  { id: "BRENT/USD", baseToken: "Brent Crude", quoteToken: "USD", tradingViewSymbol: "TVC:UKOIL", quoteSymbol: "BZ=F", icon: "🛢️" },
+];
+
+// Forex: TradingView (OANDA) + Yahoo. icon = flag emoji for list and pair bar
+const FOREX_PAIRS = [
+  { id: "EUR/USD", baseToken: "EUR", quoteToken: "USD", tradingViewSymbol: "OANDA:EURUSD", quoteSymbol: "EURUSD=X", icon: "🇪🇺" },
+  { id: "GBP/USD", baseToken: "GBP", quoteToken: "USD", tradingViewSymbol: "OANDA:GBPUSD", quoteSymbol: "GBPUSD=X", icon: "🇬🇧" },
+  { id: "USD/JPY", baseToken: "USD", quoteToken: "JPY", tradingViewSymbol: "OANDA:USDJPY", quoteSymbol: "USDJPY=X", icon: "🇯🇵" },
+  { id: "USD/CHF", baseToken: "USD", quoteToken: "CHF", tradingViewSymbol: "OANDA:USDCHF", quoteSymbol: "USDCHF=X", icon: "🇨🇭" },
+  { id: "AUD/USD", baseToken: "AUD", quoteToken: "USD", tradingViewSymbol: "OANDA:AUDUSD", quoteSymbol: "AUDUSD=X", icon: "🇦🇺" },
+  { id: "USD/CAD", baseToken: "USD", quoteToken: "CAD", tradingViewSymbol: "OANDA:USDCAD", quoteSymbol: "USDCAD=X", icon: "🇨🇦" },
+  { id: "NZD/USD", baseToken: "NZD", quoteToken: "USD", tradingViewSymbol: "OANDA:NZDUSD", quoteSymbol: "NZDUSD=X", icon: "🇳🇿" },
+  { id: "EUR/GBP", baseToken: "EUR", quoteToken: "GBP", tradingViewSymbol: "OANDA:EURGBP", quoteSymbol: "EURGBP=X", icon: "🇪🇺" },
+];
+
+// ETFs: TradingView + Yahoo. logoUrl/logoDomain for pair bar; quoteSymbol for price; icon fallback in list
+const ETF_PAIRS = [
+  { id: "SPY/USD", baseToken: "SPDR S&P 500", quoteToken: "USD", tradingViewSymbol: "AMEX:SPY", quoteSymbol: "SPY", logoDomain: "ssga.com", icon: "📊" },
+  { id: "QQQ/USD", baseToken: "Invesco QQQ", quoteToken: "USD", tradingViewSymbol: "NASDAQ:QQQ", quoteSymbol: "QQQ", logoDomain: "invesco.com", icon: "📊" },
+  { id: "IWM/USD", baseToken: "Russell 2000", quoteToken: "USD", tradingViewSymbol: "AMEX:IWM", quoteSymbol: "IWM", logoDomain: "blackrock.com", icon: "📊" },
+  { id: "DIA/USD", baseToken: "Dow Jones", quoteToken: "USD", tradingViewSymbol: "AMEX:DIA", quoteSymbol: "DIA", logoDomain: "ssga.com", icon: "📊" },
+  { id: "VOO/USD", baseToken: "Vanguard S&P 500", quoteToken: "USD", tradingViewSymbol: "AMEX:VOO", quoteSymbol: "VOO", logoDomain: "vanguard.com", icon: "📊" },
+  { id: "VTI/USD", baseToken: "Vanguard Total Market", quoteToken: "USD", tradingViewSymbol: "AMEX:VTI", quoteSymbol: "VTI", logoDomain: "vanguard.com", icon: "📊" },
+  { id: "ARKK/USD", baseToken: "ARK Innovation", quoteToken: "USD", tradingViewSymbol: "AMEX:ARKK", quoteSymbol: "ARKK", logoDomain: "ark-invest.com", icon: "📊" },
+  { id: "XLF/USD", baseToken: "Financial Select", quoteToken: "USD", tradingViewSymbol: "AMEX:XLF", quoteSymbol: "XLF", logoDomain: "ssga.com", icon: "📊" },
+  { id: "GLD/USD", baseToken: "SPDR Gold", quoteToken: "USD", tradingViewSymbol: "AMEX:GLD", quoteSymbol: "GLD", logoDomain: "ssga.com", icon: "📊" },
+];
+
+// Indices: Yahoo (^symbol) for price. chartSymbol = ETF/widget-friendly symbol (TVC: often fails in embed)
+const INDEX_PAIRS = [
+  { id: "SPX/USD", baseToken: "S&P 500", quoteToken: "USD", tradingViewSymbol: "TVC:SPX", chartSymbol: "AMEX:SPY", quoteSymbol: "^GSPC", icon: "📈" },
+  { id: "NDX/USD", baseToken: "NASDAQ 100", quoteToken: "USD", tradingViewSymbol: "TVC:NDX", chartSymbol: "NASDAQ:QQQ", quoteSymbol: "^NDX", icon: "📈" },
+  { id: "DJI/USD", baseToken: "Dow Jones", quoteToken: "USD", tradingViewSymbol: "TVC:DJI", chartSymbol: "AMEX:DIA", quoteSymbol: "^DJI", icon: "📈" },
+  { id: "VIX/USD", baseToken: "VIX", quoteToken: "USD", tradingViewSymbol: "TVC:VIX", chartSymbol: "AMEX:VXX", quoteSymbol: "^VIX", icon: "📉" },
+  { id: "IXIC/USD", baseToken: "NASDAQ Composite", quoteToken: "USD", tradingViewSymbol: "TVC:IXIC", chartSymbol: "NASDAQ:QQQ", quoteSymbol: "^IXIC", icon: "📈" },
+];
+
 export default function OmegaDEX() {
   const wallet = useWallet();
   const connected = wallet.connected;
@@ -1231,7 +1280,7 @@ export default function OmegaDEX() {
   const [selectedPair, setSelectedPair] = useState("PRE/mUSDC");
   const [pairSearchOpen, setPairSearchOpen] = useState(false);
   const [pairSearchQuery, setPairSearchQuery] = useState("");
-  const [pairDropdownTab, setPairDropdownTab] = useState("crypto"); // "crypto" | "stocks"
+  const [pairDropdownTab, setPairDropdownTab] = useState("crypto"); // "crypto" | "stocks" | "commodities" | "forex" | "etfs" | "indices"
   const [favoritePairIds, setFavoritePairIds] = useState(() => {
     try {
       return JSON.parse(localStorage.getItem("omega-favorite-pairs") || "[]");
@@ -1258,9 +1307,16 @@ export default function OmegaDEX() {
   const [eightBallAnswer, setEightBallAnswer] = useState(null);
   const [eightBallShaking, setEightBallShaking] = useState(false);
   const [showEightBallPopup, setShowEightBallPopup] = useState(false);
-  const [page, setPage] = useState("dex"); // "dex" | "prediction" | "casino"
-  const [casinoGame, setCasinoGame] = useState(null); // null | "slots" | "poker" | "blackjack" | "roulette"
-  const [casinoBalance, setCasinoBalance] = useState(1000); // play money
+  const [page, setPage] = useState("dex"); // "dex" | "prediction" | "wager"
+  const [wagerCategory, setWagerCategory] = useState("Crypto");
+  const [wagerTitle, setWagerTitle] = useState("");
+  const [wagerImage, setWagerImage] = useState("");
+  const [wagerDescription, setWagerDescription] = useState("");
+  const [wagerFundAmount, setWagerFundAmount] = useState("");
+  const [wagerEndDays, setWagerEndDays] = useState(7);
+  const [wagerCreateLoading, setWagerCreateLoading] = useState(false);
+  const [wagerCreateError, setWagerCreateError] = useState(null);
+  const [wagerMarkets, setWagerMarkets] = useState([]); // user-created markets (id = on-chain marketId when from contract)
   const [predictionMarkets, setPredictionMarkets] = useState([]);
   const [predictionLoading, setPredictionLoading] = useState(false);
   const [predictionBetMarket, setPredictionBetMarket] = useState(null);
@@ -1271,7 +1327,8 @@ export default function OmegaDEX() {
   const [predictionBetSize, setPredictionBetSize] = useState("10");
   const [chartRange, setChartRange] = useState("1w");
   const [predictionSearch, setPredictionSearch] = useState("");
-  const [predictionCategory, setPredictionCategory] = useState("all");
+  const [predictionCategory, setPredictionCategory] = useState("popular");
+  const [predictionFullLoaded, setPredictionFullLoaded] = useState(false);
   const [predictionNetwork, setPredictionNetwork] = useState("polygon"); // Force Polygon
   const [selectedEvent, setSelectedEvent] = useState(null); // event detail view
   const [selectedEventLoading, setSelectedEventLoading] = useState(false);
@@ -1279,6 +1336,12 @@ export default function OmegaDEX() {
   const [solanaConnecting, setSolanaConnecting] = useState(false);
   const [recentActivity, setRecentActivity] = useState([]);
   const [chartData, setChartData] = useState({ yes: [], no: [] }); // { yes: [], no: [] }
+  const [referralMe, setReferralMe] = useState(null);
+  const [referralMeLoading, setReferralMeLoading] = useState(false);
+  const [referralCodeInput, setReferralCodeInput] = useState("");
+  const [referralClaimLoading, setReferralClaimLoading] = useState(false);
+  const [referralClaimError, setReferralClaimError] = useState(null);
+  const [referralReferrerClaimLoading, setReferralReferrerClaimLoading] = useState(false);
   const PREDICTION_FEE_WALLET_POLY = "0xe4eB34392F232C75d0Ac3b518Ce5e265BCB35E8c";
   const PREDICTION_FEE_WALLET_SOL = "AnFJqk8JZqM7xrv9H6jaCv4ocFRJgR2Veh4c7Qjp53Y7";
   const PREDICTION_FEE_PCT = 0.0005; // 0.05%
@@ -1298,7 +1361,9 @@ export default function OmegaDEX() {
   useEffect(() => {
     if (page !== "prediction") return;
     setPredictionLoading(true);
-    fetchPredictionMarkets("", predictionNetwork)
+    setPredictionFullLoaded(false);
+    setPredictionCategory("popular");
+    fetchPredictionMarkets("", predictionNetwork, { light: true })
       .then(setPredictionMarkets)
       .catch(() => setPredictionMarkets([]))
       .finally(() => setPredictionLoading(false));
@@ -1315,6 +1380,18 @@ export default function OmegaDEX() {
       }).finally(() => setProfileLoading(false));
     }
   }, [showWalletModal, wallet.address]);
+
+  useEffect(() => {
+    if (!wallet.address) {
+      setReferralMe(null);
+      return;
+    }
+    setReferralMeLoading(true);
+    fetchReferralMe(wallet.address)
+      .then(setReferralMe)
+      .catch(() => setReferralMe(null))
+      .finally(() => setReferralMeLoading(false));
+  }, [wallet.address]);
   // Phantom Connect check
   useEffect(() => {
     if (window.solana && window.solana.isPhantom) {
@@ -1412,6 +1489,11 @@ export default function OmegaDEX() {
   const [apiError, setApiError] = useState(null);
   const [activeBets, setActiveBets] = useState([]);
   const [historyBets, setHistoryBets] = useState([]);
+  // In EZ Peeze box show only bets that still have time left (countdown > 0); Orders tab shows all
+  const activeBetsInBox = useMemo(() =>
+    activeBets.filter((b) => b.status === "active" && typeof b.remaining === "number" && b.remaining > 0),
+    [activeBets]
+  );
   const [historyLoading, setHistoryLoading] = useState(false);
   const [betPlacing, setBetPlacing] = useState(false);
   const [betError, setBetError] = useState(null);
@@ -1507,11 +1589,22 @@ export default function OmegaDEX() {
   const zeroxPair = useMemo(() => ZEROX_PAIRS.find((p) => p.id === selectedPair), [selectedPair]);
   const nonEvmPair = useMemo(() => NON_EVM_PAIRS.find((p) => p.id === selectedPair), [selectedPair]);
   const stockPair = useMemo(() => STOCK_PAIRS.find((p) => p.id === selectedPair), [selectedPair]);
-  const chartPair = zeroxPair || nonEvmPair || stockPair;
+  const commodityPair = useMemo(() => COMMODITY_PAIRS.find((p) => p.id === selectedPair), [selectedPair]);
+  const forexPair = useMemo(() => FOREX_PAIRS.find((p) => p.id === selectedPair), [selectedPair]);
+  const etfPair = useMemo(() => ETF_PAIRS.find((p) => p.id === selectedPair), [selectedPair]);
+  const indexPair = useMemo(() => INDEX_PAIRS.find((p) => p.id === selectedPair), [selectedPair]);
+  const chartPair = zeroxPair || nonEvmPair || stockPair || commodityPair || forexPair || etfPair || indexPair;
   const isZeroXPair = !!chartPair;
   const isEvmPair = !!zeroxPair;
+  const viewOnlyPair = stockPair || commodityPair || forexPair || etfPair || indexPair; // view-only chart+price
+  const viewOnlyPairRef = useRef(viewOnlyPair);
+  viewOnlyPairRef.current = viewOnlyPair;
   const allPairs = useMemo(() => {
     if (pairDropdownTab === "stocks") return [...STOCK_PAIRS];
+    if (pairDropdownTab === "commodities") return [...COMMODITY_PAIRS];
+    if (pairDropdownTab === "forex") return [...FOREX_PAIRS];
+    if (pairDropdownTab === "etfs") return [...ETF_PAIRS];
+    if (pairDropdownTab === "indices") return [...INDEX_PAIRS];
     return [...ZEROX_PAIRS, ...NON_EVM_PAIRS, ...pairs];
   }, [pairDropdownTab, pairs]);
   const pairSearchLower = (pairSearchQuery || "").trim().toLowerCase();
@@ -1675,22 +1768,23 @@ export default function OmegaDEX() {
   const loadData = useCallback(async () => {
     try {
       // Zerox / nonEvm / stock price is handled by their own effects — don't fetch orderbook here or we overwrite with server default (e.g. 0.0847)
-      if (zeroxPair || nonEvmPair || stockPair) return;
+      if (zeroxPair || nonEvmPair || stockPair || commodityPair || forexPair || etfPair || indexPair) return;
       setApiError(null);
-      {
-        const [ob, tr, dp] = await Promise.all([
-          fetchOrderBook(selectedPair),
-          fetchTrades(50, selectedPair),
-          fetchDepth(selectedPair),
-        ]);
-        setOrderBook(ob || DEFAULT_ORDERBOOK);
-        setTrades(Array.isArray(tr) ? tr.map((t) => ({ ...t, time: new Date(t.timestamp || t.time) })) : []);
-        setDepthData(dp || { bids: [], asks: [] });
-      }
+      const [ob, tr, dp] = await Promise.all([
+        fetchOrderBook(selectedPair),
+        fetchTrades(50, selectedPair),
+        fetchDepth(selectedPair),
+      ]);
+      // Don't overwrite orderbook if user switched to stock/etf/index in the meantime (stale timer/WS callback)
+      if (viewOnlyPairRef.current) return;
+      setOrderBook(ob || DEFAULT_ORDERBOOK);
+      setTrades(Array.isArray(tr) ? tr.map((t) => ({ ...t, time: new Date(t.timestamp || t.time) })) : []);
+      setDepthData(dp || { bids: [], asks: [] });
     } catch (e) {
+      if (viewOnlyPairRef.current) return;
       setApiError(e.message || "Price temporarily unavailable");
     }
-  }, [selectedPair, zeroxPair, nonEvmPair, stockPair, wallet.address, API_BASE]);
+  }, [selectedPair, zeroxPair, nonEvmPair, stockPair, commodityPair, forexPair, etfPair, indexPair, wallet.address, API_BASE]);
 
   // Debounced version to avoid flooding API on rapid WS messages
   const loadDataTimerRef = useRef(null);
@@ -1766,16 +1860,18 @@ export default function OmegaDEX() {
     return () => { cancelled = true; };
   }, [selectedPair, zeroxPair, nonEvmPair, fetchMarketFromBackend]);
 
-  // Stock quote: price + day change when a stock is selected
+  // Stock/commodity/forex quote: price when a quote pair is selected (same Yahoo API)
+  const quoteSymbol = stockPair?.stockSymbol || commodityPair?.quoteSymbol || forexPair?.quoteSymbol || etfPair?.quoteSymbol || indexPair?.quoteSymbol;
   useEffect(() => {
-    if (!stockPair?.stockSymbol) return;
+    if (!quoteSymbol) return;
     let cancelled = false;
     setApiError(null);
+    setOrderBook((prev) => (prev.midPrice ? { ...prev, midPrice: 0 } : prev)); // show "—" while loading, not stale default
     (async () => {
       const urls = [];
       if (typeof window !== "undefined" && /^https?:\/\/localhost(:\d+)?$|^https?:\/\/127\.0\.0\.1(:\d+)?$/i.test(window.location.origin))
-        urls.push(`/api/stock-quote?symbol=${encodeURIComponent(stockPair.stockSymbol)}`);
-      if (API_BASE) urls.push(`${API_BASE.replace(/\/$/, "")}/api/stock-quote?symbol=${encodeURIComponent(stockPair.stockSymbol)}`);
+        urls.push(`/api/stock-quote?symbol=${encodeURIComponent(quoteSymbol)}`);
+      if (API_BASE) urls.push(`${API_BASE.replace(/\/$/, "")}/api/stock-quote?symbol=${encodeURIComponent(quoteSymbol)}`);
       for (const url of urls) {
         try {
           const c = new AbortController();
@@ -1826,11 +1922,20 @@ export default function OmegaDEX() {
       setOrderBook((prev) => (prev.midPrice > 0 ? prev : { asks: [], bids: [], midPrice: 0 }));
     })();
     return () => { cancelled = true; };
-  }, [selectedPair, stockPair, API_BASE]);
+  }, [selectedPair, quoteSymbol, API_BASE]);
 
   useEffect(() => {
+    if (viewOnlyPair) return; // never fetch orderbook for stock/commodity/forex/etf/index — keeps quote price from being overwritten
     loadData();
-  }, [loadData, selectedPair]);
+  }, [loadData, selectedPair, viewOnlyPair]);
+
+  // Cancel any pending debounced load when switching to view-only, so a late timer can't overwrite quote price
+  useEffect(() => {
+    if (viewOnlyPair && loadDataTimerRef.current) {
+      clearTimeout(loadDataTimerRef.current);
+      loadDataTimerRef.current = null;
+    }
+  }, [viewOnlyPair]);
 
   // When header price fails for zerox/nonEvm, auto-retry a few times (same single market endpoint)
   const priceFeedRetryRef = useRef({ count: 0, timer: null });
@@ -1931,13 +2036,13 @@ export default function OmegaDEX() {
     return () => clearInterval(t);
   }, [selectedPair, zeroxPair, nonEvmPair, fetchMarketFromBackend]);
 
-  // Refresh stock quote every 60s when a stock is selected
+  // Refresh quote every 60s when a stock/commodity/forex is selected
   useEffect(() => {
-    if (!stockPair?.stockSymbol) return;
+    if (!quoteSymbol) return;
     const urls = [];
     if (typeof window !== "undefined" && /^https?:\/\/localhost(:\d+)?$|^https?:\/\/127\.0\.0\.1(:\d+)?$/i.test(window.location.origin))
-      urls.push(`/api/stock-quote?symbol=${encodeURIComponent(stockPair.stockSymbol)}`);
-    if (API_BASE) urls.push(`${API_BASE.replace(/\/$/, "")}/api/stock-quote?symbol=${encodeURIComponent(stockPair.stockSymbol)}`);
+      urls.push(`/api/stock-quote?symbol=${encodeURIComponent(quoteSymbol)}`);
+    if (API_BASE) urls.push(`${API_BASE.replace(/\/$/, "")}/api/stock-quote?symbol=${encodeURIComponent(quoteSymbol)}`);
     const t = setInterval(async () => {
       for (const url of urls) {
         try {
@@ -1959,7 +2064,7 @@ export default function OmegaDEX() {
       }
     }, 60000);
     return () => clearInterval(t);
-  }, [selectedPair, stockPair, API_BASE]);
+  }, [selectedPair, quoteSymbol, API_BASE]);
 
   useEffect(() => {
     if (!nonEvmPair) setNonEvmPriceFailed(false);
@@ -1988,8 +2093,8 @@ export default function OmegaDEX() {
 
   useEffect(() => {
     const intervalMs = isZeroXPair ? 10000 : 2000;
-    const interval = setInterval(loadData, intervalMs);
-    const ws = !isZeroXPair ? createOrderBookSocket((msg) => {
+    const interval = viewOnlyPair ? null : setInterval(loadData, intervalMs); // no polling when viewing stock/etf/index — avoid overwriting quote price
+    const ws = !isZeroXPair && !viewOnlyPair ? createOrderBookSocket((msg) => {
       if (msg.type === "orderbook" || msg.type === "trades") {
         if (!msg.pair || msg.pair === selectedPair) debouncedLoadData();
       }
@@ -2015,11 +2120,11 @@ export default function OmegaDEX() {
     }
 
     return () => {
-      clearInterval(interval);
+      if (interval != null) clearInterval(interval);
       if (loadDataTimerRef.current) clearTimeout(loadDataTimerRef.current);
       ws.close();
     };
-  }, [loadData, debouncedLoadData, wallet.address, selectedPair, isZeroXPair]);
+  }, [loadData, debouncedLoadData, wallet.address, selectedPair, isZeroXPair, viewOnlyPair]);
 
   const currentPairInfo = useMemo(() => allPairs.find((p) => p.id === selectedPair) || { baseToken: "PRE", quoteToken: "mUSDC" }, [allPairs, selectedPair]);
   const maxAsk = useMemo(() => Math.max(1, ...(orderBook.asks || []).map((a) => a.total || 0)), [orderBook]);
@@ -2034,8 +2139,8 @@ export default function OmegaDEX() {
   const handlePlaceOrder = async () => {
     setOrderError(null);
 
-    if (stockPair) {
-      setOrderError("Stocks are view-only. Charts and prices are for reference.");
+    if (viewOnlyPair) {
+      setOrderError("Stocks, commodities, and forex are view-only. Charts and prices are for reference.");
       return;
     }
     if (!connected || !wallet.address) {
@@ -2378,12 +2483,43 @@ export default function OmegaDEX() {
                         {/* Profile */}
                         <div style={{ fontSize: 10, color: t.glass.textTertiary, marginBottom: 6, letterSpacing: "0.04em" }}>Profile</div>
                         <button onClick={() => { setProfileTab("overview"); setShowWalletModal(true); setShowProfileDropdown(false); }} style={{ display: "block", width: "100%", padding: "8px 12px", marginBottom: 12, borderRadius: 8, background: "transparent", border: "1px solid " + t.glass.border, color: t.glass.text, fontSize: 12, fontWeight: 600, cursor: "pointer", textAlign: "left" }}>View Profile</button>
+                        {/* Referral: your code + claim 500 PRE */}
+                        {referralMe?.myCode && (
+                          <>
+                            <div style={{ fontSize: 10, color: t.glass.textTertiary, marginBottom: 6, letterSpacing: "0.04em" }}>Referral</div>
+                            <div style={{ padding: "8px 12px", marginBottom: 6, borderRadius: 8, background: t.glass.bg, border: "1px solid " + t.glass.border, fontSize: 11, color: t.glass.textSecondary }}>
+                              Code: <strong style={{ color: t.glass.text }}>{referralMe.myCode}</strong>
+                              <button onClick={() => navigator.clipboard?.writeText(referralMe.myCode)} style={{ marginLeft: 8, padding: "2px 8px", borderRadius: 6, background: t.glass.bgActive, border: "none", color: t.glass.text, fontSize: 10, cursor: "pointer" }}>Copy</button>
+                            </div>
+                            {referralMe.referrerClaimable > 0 && (
+                              <button
+                                disabled={referralReferrerClaimLoading}
+                                onClick={async () => {
+                                  setReferralReferrerClaimLoading(true);
+                                  try {
+                                    await claimReferralReferrer(wallet.address);
+                                    const next = await fetchReferralMe(wallet.address);
+                                    setReferralMe(next);
+                                  } catch (_) {}
+                                  setReferralReferrerClaimLoading(false);
+                                }}
+                                style={{ display: "block", width: "100%", padding: "8px 12px", marginBottom: 12, borderRadius: 8, background: theme === "dark" ? "rgba(48,209,88,0.15)" : "rgba(22,163,74,0.2)", border: "1px solid " + t.glass.green, color: t.glass.green, fontSize: 12, fontWeight: 600, cursor: referralReferrerClaimLoading ? "wait" : "pointer", textAlign: "left" }}
+                              >
+                                {referralReferrerClaimLoading ? "Claiming…" : `Claim ${referralMe.referrerClaimable} PRE`}
+                              </button>
+                            )}
+                          </>
+                        )}
                         {/* Admin Panel - only when admin wallet connected */}
                         {isAdmin && (
                           <>
                             <div style={{ fontSize: 10, color: t.glass.textTertiary, marginBottom: 6, letterSpacing: "0.04em" }}>Admin</div>
                             <button onClick={() => { setShowAdminPanel(true); setShowProfileDropdown(false); }} style={{ display: "block", width: "100%", padding: "8px 12px", marginBottom: 6, borderRadius: 8, background: theme === "dark" ? "rgba(191,90,242,0.15)" : "rgba(212,175,55,0.15)", border: "1px solid " + (theme === "dark" ? "rgba(191,90,242,0.4)" : "rgba(212,175,55,0.4)"), color: t.glass.accent, fontSize: 12, fontWeight: 600, cursor: "pointer", textAlign: "left" }}>MM Bot Control</button>
                             <button onClick={() => { setShowListTokenModal(true); setShowProfileDropdown(false); }} style={{ display: "block", width: "100%", padding: "8px 12px", marginBottom: 6, borderRadius: 8, background: "transparent", border: "1px solid " + t.glass.border, color: t.glass.text, fontSize: 12, fontWeight: 600, cursor: "pointer", textAlign: "left" }}>+ List Token Pair</button>
+                            <button
+                              onClick={async () => { try { const r = await generateInitialReferralCodes(wallet.address, 20); setOrderError(null); alert(r.message + (r.codes?.length ? "\n" + r.codes.join(", ") : "")); } catch (e) { setOrderError(e.message); } setShowProfileDropdown(false); }}
+                              style={{ display: "block", width: "100%", padding: "8px 12px", marginBottom: 6, borderRadius: 8, background: "transparent", border: "1px solid " + t.glass.border, color: t.glass.text, fontSize: 12, fontWeight: 600, cursor: "pointer", textAlign: "left" }}
+                            >Generate 20 referral codes</button>
                             {pairs.find((p) => p.id === selectedPair) && (
                               <button
                                 onClick={async () => { try { const p = pairs.find((x) => x.id === selectedPair); await (p?.mmEnabled ? disableMM(selectedPair) : enableMM(selectedPair)); setPairs(await fetchPairs()); } catch (e) { setOrderError(e.message); } setShowProfileDropdown(false); }}
@@ -2404,6 +2540,68 @@ export default function OmegaDEX() {
             </div>
           </header>
 
+
+          {/* Referral gate: must enter code and claim 100 PRE to use the site */}
+          {connected && !referralMeLoading && referralMe && !referralMe.hasClaimedReferee && !isAdmin && (
+            <div style={{
+              position: "fixed", inset: 0, zIndex: 200,
+              background: theme === "dark" ? "rgba(8,8,10,0.97)" : "rgba(255,254,249,0.98)",
+              backdropFilter: "blur(20px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24,
+            }}>
+              <div className="olympus-modal" style={{ ...t.panel, padding: 32, width: "100%", maxWidth: 420 }} onClick={(e) => e.stopPropagation()}>
+                <div style={{ textAlign: "center", marginBottom: 24 }}>
+                  <div style={{ fontSize: 22, fontWeight: 800, letterSpacing: "-0.02em", marginBottom: 8 }}>Claim 100 PRE</div>
+                  <div style={{ fontSize: 13, color: t.glass.textSecondary }}>Enter a referral code to claim 100 pre-omega tokens and start using the site. You’ll get your own code (20 uses) and earn 500 PRE when someone uses it.</div>
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                  <div>
+                    <label style={{ fontSize: 10, color: t.glass.textTertiary, letterSpacing: "0.04em", display: "block", marginBottom: 6 }}>Referral code</label>
+                    <input
+                      value={referralCodeInput}
+                      onChange={(e) => { setReferralCodeInput(e.target.value.trim().toUpperCase()); setReferralClaimError(null); }}
+                      placeholder="e.g. ABC12XYZ"
+                      maxLength={12}
+                      style={{ ...t.panelInner, width: "100%", padding: "14px 16px", color: t.glass.text, border: "1px solid " + t.glass.border, fontSize: 16, letterSpacing: "0.08em" }}
+                    />
+                  </div>
+                  {referralClaimError && (
+                    <div style={{ fontSize: 12, color: t.glass.red }}>{referralClaimError}</div>
+                  )}
+                  <button
+                    disabled={!referralCodeInput || referralClaimLoading}
+                    onClick={async () => {
+                      if (!wallet.address || !referralCodeInput) return;
+                      setReferralClaimLoading(true);
+                      setReferralClaimError(null);
+                      try {
+                        const result = await claimReferralReferee({ address: wallet.address, code: referralCodeInput });
+                        setReferralMe({
+                          hasClaimedReferee: true,
+                          myCode: result.myCode,
+                          myCodeUsesLeft: 20,
+                          referrerClaimable: result.referrerClaimable ?? 0,
+                        });
+                        setReferralCodeInput("");
+                        if (result.txHash) {
+                          try { await wallet.getProvider?.()?.getTransaction?.(result.txHash); } catch (_) {}
+                        }
+                      } catch (e) {
+                        setReferralClaimError(e.message || "Claim failed");
+                      }
+                      setReferralClaimLoading(false);
+                    }}
+                    style={{
+                      width: "100%", padding: "14px 20px", borderRadius: 14, border: "none", fontSize: 15, fontWeight: 700, cursor: referralClaimLoading ? "wait" : "pointer",
+                      background: theme === "dark" ? "linear-gradient(135deg, #D4AF37 0%, #F5B800 100%)" : "linear-gradient(135deg, #D4AF37 0%, #F5B800 100%)",
+                      color: "#1a1a1a", boxShadow: "0 8px 24px rgba(212,175,55,0.35)",
+                    }}
+                  >
+                    {referralClaimLoading ? "Claiming…" : "Claim 100 PRE"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* List Token Modal */}
           {showListTokenModal && (
@@ -2633,6 +2831,34 @@ export default function OmegaDEX() {
                           <div style={{ fontSize: 22, fontWeight: 800 }}>{profileUserTrades.length}</div>
                         </div>
                       </div>
+                      {referralMe?.myCode && (
+                        <div style={{ ...t.panelInner, padding: 16, marginTop: 16 }}>
+                          <div style={{ fontSize: 10, color: t.glass.textTertiary, marginBottom: 8, letterSpacing: "0.06em", textTransform: "uppercase" }}>Referral</div>
+                          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: referralMe.referrerClaimable > 0 ? 12 : 0 }}>
+                            <span style={{ fontSize: 13, color: t.glass.textSecondary }}>Your code:</span>
+                            <code style={{ fontSize: 16, fontWeight: 700, letterSpacing: "0.1em", color: t.glass.text }}>{referralMe.myCode}</code>
+                            <button onClick={() => navigator.clipboard?.writeText(referralMe.myCode)} style={{ padding: "6px 12px", borderRadius: 8, background: t.glass.bg, border: "1px solid " + t.glass.border, color: t.glass.text, fontSize: 11, fontWeight: 600, cursor: "pointer" }}>Copy</button>
+                          </div>
+                          <div style={{ fontSize: 11, color: t.glass.textTertiary, marginBottom: referralMe.referrerClaimable > 0 ? 10 : 0 }}>Share your code — when someone uses it you earn 500 PRE (up to 20 uses).</div>
+                          {referralMe.referrerClaimable > 0 && (
+                            <button
+                              disabled={referralReferrerClaimLoading}
+                              onClick={async () => {
+                                setReferralReferrerClaimLoading(true);
+                                try {
+                                  await claimReferralReferrer(wallet.address);
+                                  const next = await fetchReferralMe(wallet.address);
+                                  setReferralMe(next);
+                                } catch (_) {}
+                                setReferralReferrerClaimLoading(false);
+                              }}
+                              style={{ width: "100%", padding: "10px 16px", borderRadius: 10, background: "rgba(48,209,88,0.15)", border: "1px solid " + t.glass.green, color: t.glass.green, fontSize: 13, fontWeight: 600, cursor: referralReferrerClaimLoading ? "wait" : "pointer" }}
+                            >
+                              {referralReferrerClaimLoading ? "Claiming…" : `Claim ${referralMe.referrerClaimable} PRE`}
+                            </button>
+                          )}
+                        </div>
+                      )}
                     </>
                   )}
                   {profileTab === "wallet" && (
@@ -2818,8 +3044,8 @@ export default function OmegaDEX() {
                 zIndex: pairSearchOpen ? 10000 : undefined,
               }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 12, position: "relative" }}>
-                  {stockPair?.logoDomain ? (
-                    <StockPairLogo pair={stockPair} size={32} theme={theme} />
+                  {(stockPair || etfPair) && (chartPair?.logoDomain || chartPair?.logoUrl) ? (
+                    <StockPairLogo pair={chartPair} size={32} theme={theme} />
                   ) : zeroxPair || nonEvmPair ? (
                     <CryptoPairLogo
                       baseToken={chartPair?.baseToken}
@@ -2827,6 +3053,12 @@ export default function OmegaDEX() {
                       size={32}
                       theme={theme}
                     />
+                  ) : commodityPair || forexPair || etfPair || indexPair ? (
+                    chartPair?.icon ? (
+                      <div style={{ width: 32, height: 32, borderRadius: 8, background: theme === "dark" ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.06)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, lineHeight: 1, flexShrink: 0 }} aria-hidden>{chartPair.icon}</div>
+                    ) : (
+                      <div style={{ width: 32, height: 32, borderRadius: 8, background: theme === "dark" ? "rgba(255,255,255,0.12)" : "rgba(0,0,0,0.08)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16, fontWeight: 700, color: theme === "dark" ? "#fff" : "#1a1a1a", flexShrink: 0 }} aria-hidden>{(chartPair?.baseToken || "?")[0]}</div>
+                    )
                   ) : (
                     <OmegaLogo width={32} height={32} theme={theme} />
                   )}
@@ -2838,6 +3070,10 @@ export default function OmegaDEX() {
                         if (!pairSearchOpen) {
                           setPairSearchQuery("");
                           if (STOCK_PAIRS.some((p) => p.id === selectedPair)) setPairDropdownTab("stocks");
+                          else if (COMMODITY_PAIRS.some((p) => p.id === selectedPair)) setPairDropdownTab("commodities");
+                          else if (FOREX_PAIRS.some((p) => p.id === selectedPair)) setPairDropdownTab("forex");
+                          else if (ETF_PAIRS.some((p) => p.id === selectedPair)) setPairDropdownTab("etfs");
+                          else if (INDEX_PAIRS.some((p) => p.id === selectedPair)) setPairDropdownTab("indices");
                           else setPairDropdownTab("crypto");
                         }
                       }}
@@ -2857,14 +3093,27 @@ export default function OmegaDEX() {
                         display: "flex", flexDirection: "column", paddingTop: "env(safe-area-inset-top, 0)",
                       }}>
                         <div style={{ padding: "12px 12px 8px", borderBottom: "1px solid " + t.glass.border }}>
-                          <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
-                            <button type="button" onClick={() => { setPairDropdownTab("crypto"); if (![...ZEROX_PAIRS, ...NON_EVM_PAIRS, ...pairs].some((p) => p.id === selectedPair)) setSelectedPair((ZEROX_PAIRS[0] || { id: "PRE/mUSDC" }).id); }} style={{ flex: 1, padding: "10px 16px", borderRadius: 10, border: "none", background: pairDropdownTab === "crypto" ? (theme === "dark" ? "rgba(212,175,55,0.25)" : "rgba(212,175,55,0.35)") : (theme === "dark" ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.06)"), color: t.glass.text, fontWeight: 600, fontSize: 14, cursor: "pointer" }}>Crypto</button>
-                            <button type="button" onClick={() => { setPairDropdownTab("stocks"); if (!STOCK_PAIRS.some((p) => p.id === selectedPair)) setSelectedPair(STOCK_PAIRS[0]?.id || "AAPL/USD"); }} style={{ flex: 1, padding: "10px 16px", borderRadius: 10, border: "none", background: pairDropdownTab === "stocks" ? (theme === "dark" ? "rgba(212,175,55,0.25)" : "rgba(212,175,55,0.35)") : (theme === "dark" ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.06)"), color: t.glass.text, fontWeight: 600, fontSize: 14, cursor: "pointer" }}>Stocks</button>
+                          <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 12 }}>
+                            {["crypto", "stocks", "commodities", "forex", "etfs", "indices"].map((tab) => {
+                              const onSelect = () => {
+                                setPairDropdownTab(tab);
+                                if (tab === "crypto" && ![...ZEROX_PAIRS, ...NON_EVM_PAIRS, ...pairs].some((p) => p.id === selectedPair)) setSelectedPair((ZEROX_PAIRS[0] || { id: "PRE/mUSDC" }).id);
+                                if (tab === "stocks" && !STOCK_PAIRS.some((p) => p.id === selectedPair)) setSelectedPair(STOCK_PAIRS[0]?.id || "AAPL/USD");
+                                if (tab === "commodities" && !COMMODITY_PAIRS.some((p) => p.id === selectedPair)) setSelectedPair(COMMODITY_PAIRS[0]?.id || "GOLD/USD");
+                                if (tab === "forex" && !FOREX_PAIRS.some((p) => p.id === selectedPair)) setSelectedPair(FOREX_PAIRS[0]?.id || "EUR/USD");
+                                if (tab === "etfs" && !ETF_PAIRS.some((p) => p.id === selectedPair)) setSelectedPair(ETF_PAIRS[0]?.id || "SPY/USD");
+                                if (tab === "indices" && !INDEX_PAIRS.some((p) => p.id === selectedPair)) setSelectedPair(INDEX_PAIRS[0]?.id || "SPX/USD");
+                              };
+                              const label = tab === "crypto" ? "Crypto" : tab === "stocks" ? "Stocks" : tab === "commodities" ? "Comm." : tab === "forex" ? "Forex" : tab === "etfs" ? "ETFs" : "Indices";
+                              return (
+                                <button key={tab} type="button" onClick={onSelect} style={{ flex: "1 1 30%", minWidth: 0, padding: "8px 10px", borderRadius: 8, border: "none", background: pairDropdownTab === tab ? (theme === "dark" ? "rgba(212,175,55,0.25)" : "rgba(212,175,55,0.35)") : (theme === "dark" ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.06)"), color: t.glass.text, fontWeight: 600, fontSize: 12, cursor: "pointer", whiteSpace: "nowrap" }}>{label}</button>
+                              );
+                            })}
                           </div>
                           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
                           <input
                             type="text"
-                            placeholder={pairDropdownTab === "stocks" ? "Search stock..." : "Search token..."}
+                            placeholder={pairDropdownTab === "stocks" ? "Search stock..." : pairDropdownTab === "commodities" ? "Search commodity..." : pairDropdownTab === "forex" ? "Search forex..." : pairDropdownTab === "etfs" ? "Search ETF..." : pairDropdownTab === "indices" ? "Search index..." : "Search token..."}
                             value={pairSearchQuery}
                             onChange={(e) => setPairSearchQuery(e.target.value)}
                             autoFocus
@@ -2881,7 +3130,7 @@ export default function OmegaDEX() {
                         </div>
                         <div style={{ flex: 1, overflow: "auto", padding: "8px 0 24px" }}>
                           {filteredPairs.length === 0 ? (
-                            <div style={{ padding: 24, color: t.glass.textTertiary, fontSize: 14, textAlign: "center" }}>{pairDropdownTab === "stocks" ? "No stocks match" : "No tokens match"}</div>
+                            <div style={{ padding: 24, color: t.glass.textTertiary, fontSize: 14, textAlign: "center" }}>{pairDropdownTab === "stocks" ? "No stocks match" : pairDropdownTab === "commodities" ? "No commodities match" : pairDropdownTab === "forex" ? "No forex match" : pairDropdownTab === "etfs" ? "No ETFs match" : pairDropdownTab === "indices" ? "No indices match" : "No tokens match"}</div>
                           ) : (
                             filteredPairs.map((p) => {
                               const isFav = favoritePairIds.includes(p.id);
@@ -2897,19 +3146,24 @@ export default function OmegaDEX() {
                                     cursor: "pointer", transition: "background 0.15s", borderBottom: "1px solid " + (theme === "dark" ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.06)"),
                                   }}
                                 >
-                                  <span>
-                                    {p.baseToken} / {p.quoteToken}
-                                    {p.chainLabel ? (
-                                      <span style={{ display: "block", fontSize: 12, color: t.glass.textTertiary, marginTop: 2 }}>{p.chainLabel}</span>
-                                    ) : p.stockSymbol ? (
-                                      <span style={{ display: "block", fontSize: 12, color: t.glass.textTertiary, marginTop: 2 }}>{p.stockSymbol}</span>
-                                    ) : p.chainId && p.chainId !== 1 ? (
-                                      <span style={{ display: "block", fontSize: 12, color: t.glass.textTertiary, marginTop: 2 }}>
-                                        {p.chainId === 137 ? "Polygon" : p.chainId === 42161 ? "Arbitrum" : p.chainId === 10 ? "Optimism" : p.chainId === 8453 ? "Base" : p.chainId === 56 ? "BNB" : p.chainId === 43114 ? "Avalanche" : ""}
-                                      </span>
-                                    ) : null}
+                                  <span style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                                    {p.icon ? <span style={{ fontSize: 22, lineHeight: 1 }} aria-hidden>{p.icon}</span> : null}
+                                    <span>
+                                      {p.baseToken} / {p.quoteToken}
+                                      {p.chainLabel ? (
+                                        <span style={{ display: "block", fontSize: 12, color: t.glass.textTertiary, marginTop: 2 }}>{p.chainLabel}</span>
+                                      ) : p.stockSymbol ? (
+                                        <span style={{ display: "block", fontSize: 12, color: t.glass.textTertiary, marginTop: 2 }}>{p.stockSymbol}</span>
+                                      ) : p.quoteSymbol && !p.stockSymbol ? (
+                                        <span style={{ display: "block", fontSize: 12, color: t.glass.textTertiary, marginTop: 2 }}>{p.quoteSymbol}</span>
+                                      ) : p.chainId && p.chainId !== 1 ? (
+                                        <span style={{ display: "block", fontSize: 12, color: t.glass.textTertiary, marginTop: 2 }}>
+                                          {p.chainId === 137 ? "Polygon" : p.chainId === 42161 ? "Arbitrum" : p.chainId === 10 ? "Optimism" : p.chainId === 8453 ? "Base" : p.chainId === 56 ? "BNB" : p.chainId === 43114 ? "Avalanche" : ""}
+                                        </span>
+                                      ) : null}
+                                    </span>
                                   </span>
-                                  {!p.stockSymbol && (
+                                  {!p.stockSymbol && !p.quoteSymbol && (
                                   <span
                                     role="button"
                                     tabIndex={0}
@@ -2933,19 +3187,32 @@ export default function OmegaDEX() {
                     ) : pairSearchOpen && !isMobile ? (
                       <div style={{
                         position: "absolute", top: "100%", left: 0, marginTop: 4, zIndex: 10001,
-                        minWidth: 280, maxHeight: 360, overflow: "hidden", display: "flex", flexDirection: "column",
+                        minWidth: 360, maxHeight: 380, overflow: "hidden", display: "flex", flexDirection: "column",
                         background: theme === "dark" ? "#1a1a1e" : "#fff",
                         border: "1px solid " + (theme === "dark" ? "rgba(255,255,255,0.2)" : "rgba(0,0,0,0.12)"),
                         borderRadius: 16,
                         boxShadow: theme === "dark" ? "0 12px 40px rgba(0,0,0,0.6)" : "0 12px 40px rgba(0,0,0,0.15)",
                       }}>
-                        <div style={{ display: "flex", gap: 6, margin: "10px 10px 0", paddingBottom: 8 }}>
-                          <button type="button" onClick={() => { setPairDropdownTab("crypto"); if (![...ZEROX_PAIRS, ...NON_EVM_PAIRS, ...pairs].some((x) => x.id === selectedPair)) setSelectedPair((ZEROX_PAIRS[0] || { id: "PRE/mUSDC" }).id); }} style={{ flex: 1, padding: "8px 12px", borderRadius: 8, border: "none", background: pairDropdownTab === "crypto" ? (theme === "dark" ? "rgba(212,175,55,0.25)" : "rgba(212,175,55,0.35)") : (theme === "dark" ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.06)"), color: theme === "dark" ? "#fff" : "#1a1a1a", fontWeight: 600, fontSize: 12, cursor: "pointer" }}>Crypto</button>
-                          <button type="button" onClick={() => { setPairDropdownTab("stocks"); if (!STOCK_PAIRS.some((x) => x.id === selectedPair)) setSelectedPair(STOCK_PAIRS[0]?.id || "AAPL/USD"); }} style={{ flex: 1, padding: "8px 12px", borderRadius: 8, border: "none", background: pairDropdownTab === "stocks" ? (theme === "dark" ? "rgba(212,175,55,0.25)" : "rgba(212,175,55,0.35)") : (theme === "dark" ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.06)"), color: theme === "dark" ? "#fff" : "#1a1a1a", fontWeight: 600, fontSize: 12, cursor: "pointer" }}>Stocks</button>
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: 4, margin: "10px 10px 0", paddingBottom: 8 }}>
+                          {["crypto", "stocks", "commodities", "forex", "etfs", "indices"].map((tab) => {
+                            const onSelect = () => {
+                              setPairDropdownTab(tab);
+                              if (tab === "crypto" && ![...ZEROX_PAIRS, ...NON_EVM_PAIRS, ...pairs].some((x) => x.id === selectedPair)) setSelectedPair((ZEROX_PAIRS[0] || { id: "PRE/mUSDC" }).id);
+                              if (tab === "stocks" && !STOCK_PAIRS.some((x) => x.id === selectedPair)) setSelectedPair(STOCK_PAIRS[0]?.id || "AAPL/USD");
+                              if (tab === "commodities" && !COMMODITY_PAIRS.some((x) => x.id === selectedPair)) setSelectedPair(COMMODITY_PAIRS[0]?.id || "GOLD/USD");
+                              if (tab === "forex" && !FOREX_PAIRS.some((x) => x.id === selectedPair)) setSelectedPair(FOREX_PAIRS[0]?.id || "EUR/USD");
+                              if (tab === "etfs" && !ETF_PAIRS.some((x) => x.id === selectedPair)) setSelectedPair(ETF_PAIRS[0]?.id || "SPY/USD");
+                              if (tab === "indices" && !INDEX_PAIRS.some((x) => x.id === selectedPair)) setSelectedPair(INDEX_PAIRS[0]?.id || "SPX/USD");
+                            };
+                            const label = tab === "crypto" ? "Crypto" : tab === "stocks" ? "Stocks" : tab === "commodities" ? "Comm." : tab === "forex" ? "Forex" : tab === "etfs" ? "ETFs" : "Indices";
+                            return (
+                              <button key={tab} type="button" onClick={onSelect} style={{ flex: "1 1 30%", minWidth: 0, padding: "6px 8px", borderRadius: 6, border: "none", background: pairDropdownTab === tab ? (theme === "dark" ? "rgba(212,175,55,0.25)" : "rgba(212,175,55,0.35)") : (theme === "dark" ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.06)"), color: theme === "dark" ? "#fff" : "#1a1a1a", fontWeight: 600, fontSize: 11, cursor: "pointer", whiteSpace: "nowrap" }}>{label}</button>
+                            );
+                          })}
                         </div>
                         <input
                           type="text"
-                          placeholder={pairDropdownTab === "stocks" ? "Search stock..." : "Search token or pair..."}
+                          placeholder={pairDropdownTab === "stocks" ? "Search stock..." : pairDropdownTab === "commodities" ? "Search commodity..." : pairDropdownTab === "forex" ? "Search forex..." : pairDropdownTab === "etfs" ? "Search ETF..." : pairDropdownTab === "indices" ? "Search index..." : "Search token or pair..."}
                           value={pairSearchQuery}
                           onChange={(e) => setPairSearchQuery(e.target.value)}
                           onKeyDown={(e) => { if (e.key === "Escape") setPairSearchOpen(false); }}
@@ -2958,7 +3225,7 @@ export default function OmegaDEX() {
                         />
                         <div style={{ overflow: "auto", flex: 1, paddingBottom: 8 }}>
                           {filteredPairs.length === 0 ? (
-                            <div style={{ padding: 16, color: theme === "dark" ? "rgba(255,255,255,0.5)" : "rgba(0,0,0,0.5)", fontSize: 12 }}>{pairDropdownTab === "stocks" ? "No stocks match" : "No pairs match"}</div>
+                            <div style={{ padding: 16, color: theme === "dark" ? "rgba(255,255,255,0.5)" : "rgba(0,0,0,0.5)", fontSize: 12 }}>{pairDropdownTab === "stocks" ? "No stocks match" : pairDropdownTab === "commodities" ? "No commodities match" : pairDropdownTab === "forex" ? "No forex match" : pairDropdownTab === "etfs" ? "No ETFs match" : pairDropdownTab === "indices" ? "No indices match" : "No pairs match"}</div>
                           ) : (
                             filteredPairs.map((p) => {
                               const isFav = favoritePairIds.includes(p.id);
@@ -2974,19 +3241,24 @@ export default function OmegaDEX() {
                                     cursor: "pointer", transition: "background 0.15s",
                                   }}
                                 >
-                                  <span>
-                                    {p.baseToken} / {p.quoteToken}
-                                    {p.chainLabel ? (
-                                      <span style={{ fontSize: 10, color: theme === "dark" ? "rgba(255,255,255,0.55)" : "rgba(0,0,0,0.5)", marginLeft: 6 }}>{p.chainLabel}</span>
-                                    ) : p.stockSymbol ? (
-                                      <span style={{ fontSize: 10, color: theme === "dark" ? "rgba(255,255,255,0.55)" : "rgba(0,0,0,0.5)", marginLeft: 6 }}>{p.stockSymbol}</span>
-                                    ) : p.chainId && p.chainId !== 1 ? (
+                                  <span style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                                    {p.icon ? <span style={{ fontSize: 18, lineHeight: 1 }} aria-hidden>{p.icon}</span> : null}
+                                    <span>
+                                      {p.baseToken} / {p.quoteToken}
+                                      {p.chainLabel ? (
+                                        <span style={{ fontSize: 10, color: theme === "dark" ? "rgba(255,255,255,0.55)" : "rgba(0,0,0,0.5)", marginLeft: 6 }}>{p.chainLabel}</span>
+                                      ) : p.stockSymbol ? (
+                                        <span style={{ fontSize: 10, color: theme === "dark" ? "rgba(255,255,255,0.55)" : "rgba(0,0,0,0.5)", marginLeft: 6 }}>{p.stockSymbol}</span>
+                                      ) : p.quoteSymbol && !p.stockSymbol ? (
+                                        <span style={{ fontSize: 10, color: theme === "dark" ? "rgba(255,255,255,0.55)" : "rgba(0,0,0,0.5)", marginLeft: 6 }}>{p.quoteSymbol}</span>
+                                      ) : p.chainId && p.chainId !== 1 ? (
                                       <span style={{ fontSize: 10, color: theme === "dark" ? "rgba(255,255,255,0.55)" : "rgba(0,0,0,0.5)", marginLeft: 6 }}>
                                         {p.chainId === 137 ? "Polygon" : p.chainId === 42161 ? "Arbitrum" : p.chainId === 10 ? "Optimism" : p.chainId === 8453 ? "Base" : p.chainId === 56 ? "BNB" : p.chainId === 43114 ? "Avalanche" : ""}
                                       </span>
                                     ) : null}
+                                    </span>
                                   </span>
-                                  {!p.stockSymbol && (
+                                  {!p.stockSymbol && !p.quoteSymbol && (
                                   <span
                                     role="button"
                                     tabIndex={0}
@@ -3022,7 +3294,7 @@ export default function OmegaDEX() {
                   )}
                 </div>
                 <div style={{ fontSize: isMobile ? 20 : 24, fontWeight: 700, color: t.glass.green, letterSpacing: "-0.04em" }}>
-                  ${getCurrentPriceDisplay(orderBook, nonEvmPair, nonEvmPriceFailed, stockPair)}
+                  ${getCurrentPriceDisplay(orderBook, nonEvmPair, nonEvmPriceFailed, viewOnlyPair)}
                 </div>
 
                 {!isMobile && (() => {
@@ -3205,7 +3477,7 @@ export default function OmegaDEX() {
                   </button>
                   <button
                     type="button"
-                    onClick={() => { setPage("casino"); setCasinoGame(null); }}
+                    onClick={() => setPage("wager")}
                     style={{
                       padding: "8px 16px",
                       borderRadius: "100px",
@@ -3219,7 +3491,7 @@ export default function OmegaDEX() {
                       transition: "all 0.2s",
                     }}
                   >
-                    Casino
+                    Wager
                   </button>
                 </div>
               </div>
@@ -3227,20 +3499,29 @@ export default function OmegaDEX() {
           )}
           {
             page === "prediction" && (() => {
+              // When user picks a category that needs full data, load full list once
+              const handleCategorySelect = (id) => {
+                if (predictionFullLoaded) { setPredictionCategory(id); return; }
+                if (id === "popular") { setPredictionCategory("popular"); return; }
+                setPredictionLoading(true);
+                fetchPredictionMarkets("", predictionNetwork)
+                  .then((list) => { setPredictionMarkets(list); setPredictionFullLoaded(true); setPredictionCategory(id); })
+                  .catch(() => {})
+                  .finally(() => setPredictionLoading(false));
+              };
               // Extract unique categories from loaded markets
               const categories = [...new Set(predictionMarkets.map(m => m.category).filter(Boolean))].sort();
-              // Section tabs: Trending, New, Popular, or specific category
               const SECTION_TABS = [
+                { id: "popular", label: "⭐ Popular", icon: "" },
                 { id: "all", label: "🔥 All", icon: "" },
                 { id: "trending", label: "📈 Trending", icon: "" },
                 { id: "new", label: "🆕 New", icon: "" },
-                { id: "popular", label: "⭐ Popular", icon: "" },
               ];
               const filteredMarkets = predictionMarkets.filter((m) => {
                 // Section filter
                 if (predictionCategory === "trending" && m.section !== "trending") return false;
                 if (predictionCategory === "new" && m.section !== "new") return false;
-                if (predictionCategory === "popular" && m.section !== "popular" && m.section !== "trending") return false;
+                if (predictionCategory === "popular" && m.section !== "popular" && m.section !== "trending" && m.section !== "new") return false;
                 // Category filter (non-special tabs)
                 if (!["all", "trending", "new", "popular"].includes(predictionCategory) && m.category !== predictionCategory) return false;
                 // Search filter
@@ -3508,7 +3789,7 @@ export default function OmegaDEX() {
                     borderBottom: "1px solid " + t.glass.border,
                   }}>
                     {SECTION_TABS.map((tab) => (
-                      <button key={tab.id} type="button" onClick={() => setPredictionCategory(tab.id)} style={{
+                      <button key={tab.id} type="button" onClick={() => handleCategorySelect(tab.id)} style={{
                         padding: "6px 16px", borderRadius: 8, border: "none", cursor: "pointer",
                         fontSize: 12, fontWeight: 700, transition: "all 0.15s",
                         background: predictionCategory === tab.id
@@ -3521,7 +3802,7 @@ export default function OmegaDEX() {
                     {/* Category pills — scrollable */}
                     <div style={{ display: "flex", gap: 4, overflow: "auto", flex: 1, scrollbarWidth: "none" }}>
                       {categories.map((cat) => (
-                        <button key={cat} type="button" onClick={() => setPredictionCategory(predictionCategory === cat ? "all" : cat)} style={{
+                        <button key={cat} type="button" onClick={() => handleCategorySelect(predictionCategory === cat ? "all" : cat)} style={{
                           padding: "5px 12px", borderRadius: 100, border: "none", cursor: "pointer", whiteSpace: "nowrap",
                           fontSize: 11, fontWeight: 600, transition: "all 0.15s", flexShrink: 0,
                           background: predictionCategory === cat
@@ -3701,8 +3982,8 @@ export default function OmegaDEX() {
           }
 
 
-          {/* ═══ CASINO PAGE ═══ */}
-          {page === "casino" && (
+          {/* ═══ WAGER PAGE — Create your own prediction markets ═══ */}
+          {page === "wager" && (
             <>
               <div style={{
                 ...t.panel, margin: "12px 12px 0",
@@ -3726,11 +4007,9 @@ export default function OmegaDEX() {
                     border: "1px solid " + (theme === "dark" ? "rgba(212,175,55,0.5)" : "rgba(212,175,55,0.6)"),
                     background: theme === "dark" ? "rgba(255,255,255,0.1)" : "rgba(212,175,55,0.12)",
                     color: t.glass.gold, fontSize: 12, fontWeight: 600, letterSpacing: "0.04em", cursor: "default",
-                  }}>Casino</button>
+                  }}>Wager</button>
                 </div>
                 <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 12 }}>
-                  <span style={{ fontSize: 12, color: t.glass.textSecondary }}>Balance:</span>
-                  <span style={{ fontSize: 14, fontWeight: 700, color: t.glass.gold, fontFamily: "monospace" }}>${casinoBalance}</span>
                   <button type="button" onClick={() => setShowEightBallPopup(true)} style={{
                     width: 36, height: 36, borderRadius: "50%",
                     border: "2px solid " + (theme === "dark" ? "rgba(255,255,255,0.1)" : "rgba(212,175,55,0.3)"),
@@ -3742,13 +4021,109 @@ export default function OmegaDEX() {
                 </div>
               </div>
 
-              <div style={{ padding: 12, height: "calc(100vh - 180px)", minHeight: 600, overflow: "hidden" }}>
-                <Casino
-                  balance={casinoBalance}
-                  setBalance={setCasinoBalance}
-                  theme={theme}
-                  t={t}
-                />
+              <div style={{ padding: 12, height: "calc(100vh - 180px)", minHeight: 600, overflow: "auto" }}>
+                <div style={{ maxWidth: 720, margin: "0 auto" }}>
+                  <div style={{ fontSize: 18, fontWeight: 700, color: t.glass.text, marginBottom: 20 }}>Create your prediction market</div>
+                  <div style={{ ...t.panel, padding: 24, marginBottom: 20 }}>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+                      <div>
+                        <label style={{ fontSize: 11, color: t.glass.textTertiary, display: "block", marginBottom: 6 }}>Category (like Polymarket)</label>
+                        <select value={wagerCategory} onChange={(e) => setWagerCategory(e.target.value)} style={{
+                          width: "100%", padding: "10px 12px", borderRadius: 10, border: "1px solid " + t.glass.border,
+                          background: theme === "dark" ? "rgba(255,255,255,0.06)" : "rgba(255,250,240,0.9)", color: t.glass.text, fontSize: 13,
+                        }}>
+                          {["Crypto", "Politics", "Sports", "Science and Technology", "Pop Culture", "Business", "Climate and Weather", "World"].map((cat) => (
+                            <option key={cat} value={cat}>{cat}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label style={{ fontSize: 11, color: t.glass.textTertiary, display: "block", marginBottom: 6 }}>Title</label>
+                        <input type="text" placeholder="e.g. Will BTC hit $100k by end of 2025?" value={wagerTitle} onChange={(e) => setWagerTitle(e.target.value)} style={{
+                          width: "100%", padding: "10px 12px", borderRadius: 10, border: "1px solid " + t.glass.border,
+                          background: theme === "dark" ? "rgba(255,255,255,0.06)" : "rgba(255,250,240,0.9)", color: t.glass.text, fontSize: 13,
+                        }} />
+                      </div>
+                      <div>
+                        <label style={{ fontSize: 11, color: t.glass.textTertiary, display: "block", marginBottom: 6 }}>Image URL</label>
+                        <input type="text" placeholder="https://..." value={wagerImage} onChange={(e) => setWagerImage(e.target.value)} style={{
+                          width: "100%", padding: "10px 12px", borderRadius: 10, border: "1px solid " + t.glass.border,
+                          background: theme === "dark" ? "rgba(255,255,255,0.06)" : "rgba(255,250,240,0.9)", color: t.glass.text, fontSize: 13,
+                        }} />
+                        {wagerImage && <img src={wagerImage} alt="" style={{ marginTop: 8, width: 120, height: 120, borderRadius: 12, objectFit: "cover" }} onError={(e) => e.target.style.display = "none"} />}
+                      </div>
+                      <div>
+                        <label style={{ fontSize: 11, color: t.glass.textTertiary, display: "block", marginBottom: 6 }}>Description (optional)</label>
+                        <textarea placeholder="Describe the market and resolution criteria..." value={wagerDescription} onChange={(e) => setWagerDescription(e.target.value)} rows={3} style={{
+                          width: "100%", padding: "10px 12px", borderRadius: 10, border: "1px solid " + t.glass.border,
+                          background: theme === "dark" ? "rgba(255,255,255,0.06)" : "rgba(255,250,240,0.9)", color: t.glass.text, fontSize: 13, resize: "vertical",
+                        }} />
+                      </div>
+                      <div>
+                        <label style={{ fontSize: 11, color: t.glass.textTertiary, display: "block", marginBottom: 6 }}>Resolution in (days)</label>
+                        <input type="number" min={1} max={365} value={wagerEndDays} onChange={(e) => setWagerEndDays(Number(e.target.value) || 7)} style={{
+                          width: "100%", padding: "10px 12px", borderRadius: 10, border: "1px solid " + t.glass.border,
+                          background: theme === "dark" ? "rgba(255,255,255,0.06)" : "rgba(255,250,240,0.9)", color: t.glass.text, fontSize: 13,
+                        }} />
+                      </div>
+                      <div>
+                        <label style={{ fontSize: 11, color: t.glass.textTertiary, display: "block", marginBottom: 6 }}>Fund market (escrow) — native token</label>
+                        <input type="text" placeholder="Amount to lock in smart contract (e.g. 0.1)" value={wagerFundAmount} onChange={(e) => setWagerFundAmount(e.target.value)} style={{
+                          width: "100%", padding: "10px 12px", borderRadius: 10, border: "1px solid " + t.glass.border,
+                          background: theme === "dark" ? "rgba(255,255,255,0.06)" : "rgba(255,250,240,0.9)", color: t.glass.text, fontSize: 13,
+                        }} />
+                        <div style={{ fontSize: 11, color: t.glass.textTertiary, marginTop: 6 }}>Smart contract holds funds as escrow. Payouts and odds are computed from bets.</div>
+                      </div>
+                      {wagerCreateError && <div style={{ fontSize: 12, color: t.glass.red }}>{wagerCreateError}</div>}
+                      <button type="button" onClick={async () => {
+                        if (!wagerTitle.trim()) return;
+                        const prov = wallet.getProvider?.();
+                        if (!prov || !connected) { setWagerCreateError("Connect wallet first"); return; }
+                        setWagerCreateError(null);
+                        setWagerCreateLoading(true);
+                        try {
+                          const provider = new ethers.BrowserProvider(prov);
+                          const signer = await provider.getSigner();
+                          const chainId = (await provider.getNetwork()).chainId;
+                          const contract = await getWagerContract(signer, chainId);
+                          if (!contract) { setWagerCreateError("Escrow not deployed on this network. Run: npx hardhat run scripts/deploy-wager.js --network <your-network>"); setWagerCreateLoading(false); return; }
+                          const endTime = Math.floor(Date.now() / 1000) + wagerEndDays * 86400;
+                          const marketId = await wagerCreateMarket(signer, { token: ethers.ZeroAddress, endTime, category: wagerCategory, title: wagerTitle.trim(), imageUrl: wagerImage || "", description: wagerDescription || "" });
+                          const fundRaw = wagerFundAmount.trim();
+                          if (fundRaw && !isNaN(Number(fundRaw)) && Number(fundRaw) > 0) {
+                            const amountWei = ethers.parseEther(fundRaw);
+                            await wagerFundMarket(signer, marketId, amountWei, true);
+                          }
+                          const link = `${typeof window !== "undefined" ? window.location.origin : ""}/?wager=${marketId}&chain=${chainId}`;
+                          setWagerMarkets((prev) => [{ id: String(marketId), marketId, chainId: String(chainId), category: wagerCategory, title: wagerTitle.trim(), image: wagerImage || null, description: wagerDescription.trim(), fundAmount: fundRaw || null, link, createdAt: Date.now() }, ...prev]);
+                          setWagerTitle(""); setWagerImage(""); setWagerDescription(""); setWagerFundAmount("");
+                        } catch (e) {
+                          setWagerCreateError(e.message || "Create failed");
+                        } finally {
+                          setWagerCreateLoading(false);
+                        }
+                      }} disabled={!wagerTitle.trim() || wagerCreateLoading} style={{
+                        padding: "12px 24px", borderRadius: 12, border: "none", background: t.glass.gold, color: "#000", fontSize: 13, fontWeight: 700, cursor: wagerTitle.trim() && !wagerCreateLoading ? "pointer" : "not-allowed", opacity: wagerTitle.trim() && !wagerCreateLoading ? 1 : 0.6,
+                      }}>{wagerCreateLoading ? "Creating…" : "Create & get share link"}</button>
+                    </div>
+                  </div>
+                  {wagerMarkets.length > 0 && (
+                    <div style={{ marginBottom: 12, fontSize: 14, fontWeight: 600, color: t.glass.text }}>Your markets</div>
+                  )}
+                  {wagerMarkets.map((m) => (
+                    <div key={m.id} style={{ ...t.panel, padding: 16, marginBottom: 12, display: "flex", alignItems: "center", gap: 16 }}>
+                      {m.image && <img src={m.image} alt="" style={{ width: 48, height: 48, borderRadius: 10, objectFit: "cover" }} />}
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 11, color: t.glass.textTertiary, marginBottom: 2 }}>{m.category}</div>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: t.glass.text }}>{m.title}</div>
+                        {m.fundAmount && <div style={{ fontSize: 11, color: t.glass.textSecondary, marginTop: 4 }}>Escrow: {m.fundAmount}</div>}
+                      </div>
+                      <button type="button" onClick={() => { try { navigator.clipboard.writeText(m.link); } catch (_) {} }} style={{
+                        padding: "8px 14px", borderRadius: 8, border: "1px solid " + t.glass.border, background: "transparent", color: t.glass.gold, fontSize: 11, fontWeight: 600, cursor: "pointer",
+                      }}>Copy link</button>
+                    </div>
+                  ))}
+                </div>
               </div>
             </>
           )}
@@ -4144,14 +4519,14 @@ export default function OmegaDEX() {
                     <div style={{ textAlign: "center" }}>
                       <div style={{ fontSize: 11, color: t.glass.textTertiary, marginBottom: 4, textTransform: "uppercase", letterSpacing: "0.06em" }}>Current Price</div>
                       <div style={{ fontSize: 28, fontWeight: 800, color: "#fff", fontFamily: "'SF Mono', monospace" }}>
-                        {getCurrentPriceDisplay(orderBook, nonEvmPair, nonEvmPriceFailed, stockPair)}
+                        {getCurrentPriceDisplay(orderBook, nonEvmPair, nonEvmPriceFailed, viewOnlyPair)}
                       </div>
                       <div style={{ fontSize: 12, color: t.glass.textTertiary }}>{currentPairInfo.baseToken || "PRE"} / {currentPairInfo.quoteToken || "mUSDC"}</div>
                     </div>
                     <div>
                       <div style={{ fontSize: 10, color: t.glass.textTertiary, marginBottom: 6, textTransform: "uppercase" }}>Timeframe</div>
                       <div style={{ display: "flex", gap: 6 }}>
-                        {[{ label: "30s", val: 30 }, { label: "1m", val: 60 }, { label: "2m", val: 120 }, { label: "5m", val: 300 }].map((tf) => (
+                        {[{ label: "1m", val: 60 }, { label: "2m", val: 120 }, { label: "5m", val: 300 }, { label: "24h", val: 86400 }, { label: "1w", val: 604800 }].map((tf) => (
                           <button key={tf.val} onClick={() => setBetTimeframe(tf.val)} style={{
                             flex: 1, padding: "12px 0", borderRadius: 12, border: "none", cursor: "pointer", fontSize: 13, fontWeight: 700,
                             background: betTimeframe === tf.val ? "rgba(255,255,255,0.15)" : "rgba(255,255,255,0.04)",
@@ -4203,11 +4578,11 @@ export default function OmegaDEX() {
                         <span style={{ fontSize: 12, color: t.glass.textTertiary }}>Price goes lower</span>
                       </button>
                     </div>
-                    {activeBets.length > 0 && (
+                    {activeBetsInBox.length > 0 && (
                       <div style={{ marginTop: 12 }}>
                         <div style={{ fontSize: 10, color: t.glass.textTertiary, marginBottom: 6, textTransform: "uppercase" }}>Active Bets</div>
                         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                          {activeBets.slice(0, 3).map(bet => (
+                          {activeBetsInBox.slice(0, 3).map(bet => (
                             <div key={bet.id} style={{
                               padding: "10px 12px", borderRadius: 12,
                               background: "rgba(255,255,255,0.04)", border: "1px solid " + t.glass.border,
@@ -4254,11 +4629,11 @@ export default function OmegaDEX() {
                       </div>
                       <div style={{ flex: 1, overflow: "hidden", padding: 8, minHeight: 200, minWidth: 0, display: "flex", flexDirection: "column" }}>
                         {zeroxLeftTab === "news" && (
-                          <CryptoNews theme={theme} ticker={chartPair?.baseToken || "ETH"} isStock={!!stockPair} symbol={stockPair?.stockSymbol || ""} />
+                          <CryptoNews theme={theme} ticker={etfPair ? etfPair.quoteSymbol : (chartPair?.baseToken || "ETH")} isStock={!!stockPair} symbol={stockPair?.stockSymbol || etfPair?.quoteSymbol || ""} topicLabel={stockPair ? "stock" : commodityPair ? "commodity" : forexPair ? "forex" : etfPair ? "etf" : indexPair ? "index" : undefined} />
                         )}
                         {zeroxLeftTab === "technical" && (
                           <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
-                            <TradingViewTechnical symbol={chartPair?.tradingViewSymbol || "BINANCE:ETHUSDC"} theme={theme} />
+                            <TradingViewTechnical symbol={chartPair?.chartSymbol || chartPair?.tradingViewSymbol || "BINANCE:ETHUSDC"} theme={theme} />
                           </div>
                         )}
                       </div>
@@ -4377,7 +4752,7 @@ export default function OmegaDEX() {
                       /* TradingView chart for 0x pairs */
                       <div className="dex-center-row" style={{ display: "flex", flex: 1, gap: 12 }}>
                         <div className="dex-chart-panel" style={{ ...t.panel, flex: 1, position: "relative", overflow: "hidden" }}>
-                          <TradingViewChart symbol={chartPair?.tradingViewSymbol || "BINANCE:ETHUSDC"} theme={theme} />
+                          <TradingViewChart symbol={chartPair?.chartSymbol || chartPair?.tradingViewSymbol || "BINANCE:ETHUSDC"} theme={theme} />
                         </div>
                       </div>
                     ) : (
@@ -4460,8 +4835,8 @@ export default function OmegaDEX() {
                             }}
                           >
                             {tab}
-                            {tab === "Orders" && openOrders.length > 0 && (
-                              <span style={{ marginLeft: 6, opacity: 0.5 }}>{openOrders.length}</span>
+                            {tab === "Orders" && (openOrders.length > 0 || activeBets.length > 0) && (
+                              <span style={{ marginLeft: 6, opacity: 0.5 }}>{openOrders.length + activeBets.length}</span>
                             )}
                             {tab === "History" && historyBets.length > 0 && (
                               <span style={{ marginLeft: 6, opacity: 0.5 }}>{historyBets.length}</span>
@@ -4482,34 +4857,58 @@ export default function OmegaDEX() {
                       <div style={{ overflow: "auto", height: "calc(100% - 40px)", padding: "12px 20px" }}>
                         {bottomTab === "orders" ? (
                           <div className="dex-orders-table" style={{ overflowX: "auto" }}>
-                            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 10 }}>
-                              <thead>
-                                <tr style={{ color: t.glass.textTertiary, fontSize: 9, letterSpacing: "0.04em" }}>
-                                  {["Side", "Price", "Amount", "Filled", "Token", "Chain", "Time", "Action"].map((h) => (
-                                    <th key={h} style={{ padding: "5px 10px", textAlign: "left", fontWeight: 500 }}>{h}</th>
-                                  ))}
-                                </tr>
-                              </thead>
-                              <tbody>
-                                {openOrders.map((order) => (
-                                  <tr key={order.id} style={{ borderTop: "1px solid " + t.glass.border }}>
-                                    <td style={{ padding: "7px 10px", fontWeight: 600, color: order.side === "buy" ? t.glass.green : t.glass.red }}>{order.side.toUpperCase()}</td>
-                                    <td style={{ padding: "7px 10px", fontFamily: "'SF Mono', monospace" }}>{order.price.toFixed(4)}</td>
-                                    <td style={{ padding: "7px 10px", fontFamily: "'SF Mono', monospace" }}>{order.amount.toLocaleString()}</td>
-                                    <td style={{ padding: "7px 10px" }}>{order.amount ? Math.round((order.filled || 0) / order.amount * 100) : 0}%</td>
-                                    <td style={{ padding: "7px 10px" }}>{order.token || "USDT"}</td>
-                                    <td style={{ padding: "7px 10px" }}>{order.chain || "—"}</td>
-                                    <td style={{ padding: "7px 10px" }}>{order.timestamp ? new Date(order.timestamp).toLocaleTimeString() : "—"}</td>
-                                    <td style={{ padding: "7px 10px" }}>
-                                      <button onClick={() => handleCancelOrder(order.id)} style={{
-                                        background: "none", border: "1px solid " + t.glass.border,
-                                        color: t.glass.text, borderRadius: 4, padding: "2px 8px", cursor: "pointer"
-                                      }}>Cancel</button>
-                                    </td>
+                            {(openOrders.length > 0 || activeBets.length > 0) ? (
+                              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 10 }}>
+                                <thead>
+                                  <tr style={{ color: t.glass.textTertiary, fontSize: 9, letterSpacing: "0.04em" }}>
+                                    {["Type", "Side", "Price", "Amount", "Filled", "Token", "Chain", "Time", "Action"].map((h) => (
+                                      <th key={h} style={{ padding: "5px 10px", textAlign: "left", fontWeight: 500 }}>{h}</th>
+                                    ))}
                                   </tr>
-                                ))}
-                              </tbody>
-                            </table>
+                                </thead>
+                                <tbody>
+                                  {openOrders.map((order) => (
+                                    <tr key={"order-" + order.id} style={{ borderTop: "1px solid " + t.glass.border }}>
+                                      <td style={{ padding: "7px 10px", fontSize: 9, color: t.glass.textTertiary }}>Order</td>
+                                      <td style={{ padding: "7px 10px", fontWeight: 600, color: order.side === "buy" ? t.glass.green : t.glass.red }}>{order.side.toUpperCase()}</td>
+                                      <td style={{ padding: "7px 10px", fontFamily: "'SF Mono', monospace" }}>{order.price.toFixed(4)}</td>
+                                      <td style={{ padding: "7px 10px", fontFamily: "'SF Mono', monospace" }}>{order.amount.toLocaleString()}</td>
+                                      <td style={{ padding: "7px 10px" }}>{order.amount ? Math.round((order.filled || 0) / order.amount * 100) : 0}%</td>
+                                      <td style={{ padding: "7px 10px" }}>{order.token || "USDT"}</td>
+                                      <td style={{ padding: "7px 10px" }}>{order.chain || "—"}</td>
+                                      <td style={{ padding: "7px 10px" }}>{order.timestamp ? new Date(order.timestamp).toLocaleTimeString() : "—"}</td>
+                                      <td style={{ padding: "7px 10px" }}>
+                                        <button onClick={() => handleCancelOrder(order.id)} style={{
+                                          background: "none", border: "1px solid " + t.glass.border,
+                                          color: t.glass.text, borderRadius: 4, padding: "2px 8px", cursor: "pointer"
+                                        }}>Cancel</button>
+                                      </td>
+                                    </tr>
+                                  ))}
+                                  {activeBets.map((bet) => {
+                                    const isActive = bet.status === "active";
+                                    const mins = Math.floor((bet.remaining || 0) / 60);
+                                    const secs = (bet.remaining || 0) % 60;
+                                    const timeStr = isActive ? `${mins}:${secs.toString().padStart(2, "0")}` : (bet.placedAt ? new Date(bet.placedAt).toLocaleTimeString() : "—");
+                                    return (
+                                      <tr key={"bet-" + bet.id} style={{ borderTop: "1px solid " + t.glass.border }}>
+                                        <td style={{ padding: "7px 10px", fontSize: 9, color: t.glass.gold }}>EZ Peeze</td>
+                                        <td style={{ padding: "7px 10px", fontWeight: 600, color: bet.direction === "up" ? t.glass.green : t.glass.red }}>{(bet.direction || "").toUpperCase()}</td>
+                                        <td style={{ padding: "7px 10px", fontFamily: "'SF Mono', monospace" }}>{(bet.entryPrice ?? 0).toFixed(4)}</td>
+                                        <td style={{ padding: "7px 10px", fontFamily: "'SF Mono', monospace" }}>{bet.amount ?? 0}</td>
+                                        <td style={{ padding: "7px 10px", color: t.glass.textTertiary }}>{isActive ? "—" : (bet.status === "won" ? "Won" : "Lost")}</td>
+                                        <td style={{ padding: "7px 10px" }}>PRE</td>
+                                        <td style={{ padding: "7px 10px" }}>{bet.pair && bet.pair !== "PRE/mUSDC" ? bet.pair.replace("/", "") : "—"}</td>
+                                        <td style={{ padding: "7px 10px", fontFamily: isActive ? "'SF Mono', monospace" : undefined, fontWeight: isActive ? 700 : 400 }}>{timeStr}</td>
+                                        <td style={{ padding: "7px 10px", color: t.glass.textTertiary }}>—</td>
+                                      </tr>
+                                    );
+                                  })}
+                                </tbody>
+                              </table>
+                            ) : (
+                              <div style={{ textAlign: "center", padding: 24, color: t.glass.textTertiary, fontSize: 11 }}>No open orders or EZ Peeze bets.</div>
+                            )}
                           </div>
                         ) : bottomTab === "depth" ? (
                           <div style={{ height: "100%" }}><DepthChart depthData={depthData} /></div>
@@ -4817,7 +5216,7 @@ export default function OmegaDEX() {
                               }),
                             }}
                           >
-                            {stockPair ? "View only" : !connected ? "Connect Wallet" : orderLoading ? (isZeroXPair ? "Swapping..." : "Placing...") : `${side.toUpperCase()} ${currentPairInfo.baseToken || "PRE"}`}
+                            {viewOnlyPair ? "View only" : !connected ? "Connect Wallet" : orderLoading ? (isZeroXPair ? "Swapping..." : "Placing...") : `${side.toUpperCase()} ${currentPairInfo.baseToken || "PRE"}`}
                           </button>
 
                           {connected && !isZeroXPair && (
@@ -4975,7 +5374,7 @@ export default function OmegaDEX() {
                           <div style={{ ...t.panelInner, padding: "12px 16px", borderRadius: 16, textAlign: "center" }}>
                             <div style={{ fontSize: 9, color: t.glass.textTertiary, marginBottom: 2, textTransform: "uppercase", letterSpacing: "0.08em" }}>Current Price</div>
                             <div style={{ fontSize: 36, fontWeight: 800, color: "#fff", fontFamily: "'SF Mono', monospace", letterSpacing: "-0.02em" }}>
-                              {getCurrentPriceDisplay(orderBook, nonEvmPair, nonEvmPriceFailed, stockPair)}
+                              {getCurrentPriceDisplay(orderBook, nonEvmPair, nonEvmPriceFailed, viewOnlyPair)}
                             </div>
                             <div style={{ fontSize: 10, color: t.glass.textTertiary }}>{currentPairInfo.baseToken || "PRE"} / {currentPairInfo.quoteToken || "mUSDC"}</div>
                           </div>
@@ -4984,7 +5383,7 @@ export default function OmegaDEX() {
                           <div>
                             <div style={{ fontSize: 9, color: t.glass.textTertiary, marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.06em" }}>Timeframe</div>
                             <div style={{ display: "flex", gap: 4, padding: 3, borderRadius: 10, background: "rgba(255,255,255,0.03)" }}>
-                              {[{ label: "30s", val: 30 }, { label: "1m", val: 60 }, { label: "2m", val: 120 }, { label: "5m", val: 300 }].map((tf) => (
+                              {[{ label: "1m", val: 60 }, { label: "2m", val: 120 }, { label: "5m", val: 300 }, { label: "24h", val: 86400 }, { label: "1w", val: 604800 }].map((tf) => (
                                 <button key={tf.val} onClick={() => setBetTimeframe(tf.val)} style={{
                                   flex: 1, padding: "8px 0", borderRadius: 8, border: "none", cursor: "pointer",
                                   fontSize: 11, fontWeight: 700,
@@ -5050,12 +5449,12 @@ export default function OmegaDEX() {
                             </button>
                           </div>
 
-                          {/* Active Bets */}
-                          {activeBets.length > 0 && (
+                          {/* Active Bets — only show while countdown > 0; resolved/expired stay in Orders tab */}
+                          {activeBetsInBox.length > 0 && (
                             <div style={{ marginTop: 4 }}>
                               <div style={{ fontSize: 9, color: t.glass.textTertiary, marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.06em" }}>Active Bets</div>
                               <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                                {activeBets.map(bet => {
+                                {activeBetsInBox.map(bet => {
                                   const isActive = bet.status === "active";
                                   const won = bet.status === "won";
                                   const borderColor = isActive ? "rgba(255,255,255,0.1)" : won ? "rgba(50,215,75,0.4)" : "rgba(255,69,58,0.4)";

@@ -781,10 +781,16 @@ app.get("/api/stock-quote", async (req, res) => {
     const { default: YahooFinance } = await import("yahoo-finance2");
     const yahooFinance = new YahooFinance();
     const quote = await yahooFinance.quote(symbol);
-    if (!quote || (quote.regularMarketPrice != null && !Number.isFinite(Number(quote.regularMarketPrice)))) {
-      return res.status(404).json({ error: "Quote not found", symbol });
-    }
-    const price = Number(quote.regularMarketPrice);
+    if (!quote) return res.status(404).json({ error: "Quote not found", symbol });
+    // Indices/ETFs may use regularMarketPrice, regularMarketOpen, or postMarketPrice
+    let price = quote.regularMarketPrice != null && Number.isFinite(Number(quote.regularMarketPrice))
+      ? Number(quote.regularMarketPrice)
+      : null;
+    if (price == null && quote.regularMarketOpen != null && Number.isFinite(Number(quote.regularMarketOpen)))
+      price = Number(quote.regularMarketOpen);
+    if (price == null && quote.postMarketPrice != null && Number.isFinite(Number(quote.postMarketPrice)))
+      price = Number(quote.postMarketPrice);
+    if (price == null || price <= 0) return res.status(404).json({ error: "Quote not found", symbol });
     const changePercent = quote.regularMarketChangePercent != null ? Number(quote.regularMarketChangePercent) : null;
     const data = {
       price,
@@ -911,12 +917,30 @@ function filterNewsRelevanceForStock(items, ticker, symbol) {
   });
 }
 
+// For forex/commodity/etf/index: keep articles whose title mentions the ticker or topic; drop crypto noise for etf/index
+const CRYPTO_BUZZ = ["crypto", "cryptocurrency", "bitcoin", "blockchain", " coin price", " coin ", "defi", "nft "];
+function filterNewsRelevanceForTopic(items, ticker, topic) {
+  if (topic !== "forex" && topic !== "commodity" && topic !== "etf" && topic !== "index") return items;
+  const tickerLower = (ticker || "").toLowerCase();
+  const topicLower = topic.toLowerCase();
+  return items.filter((item) => {
+    const title = (item.title || "").toLowerCase();
+    if (topic === "etf" || topic === "index") {
+      for (const w of CRYPTO_BUZZ) { if (title.includes(w)) return false; }
+    }
+    if (tickerLower && title.includes(tickerLower)) return true;
+    if (title.includes(topicLower)) return true;
+    return false;
+  });
+}
+
 app.get("/api/crypto-news", async (req, res) => {
-  const isStock = (req.query.topic || req.query.type || "").toLowerCase() === "stock";
+  const topic = (req.query.topic || req.query.type || "").toLowerCase();
+  const isStock = topic === "stock";
   const rawTicker = (req.query.ticker || req.query.q || "").trim();
   const ticker = isStock ? rawTicker : rawTicker.toUpperCase();
   const symbol = (req.query.symbol || "").trim().toUpperCase(); // e.g. ADBE for stocks
-  const suffix = isStock ? "stock" : "crypto";
+  const suffix = topic === "forex" ? "forex" : topic === "commodity" || topic === "commodities" ? "commodity" : topic === "etf" ? "etf" : topic === "index" || topic === "indices" ? "index" : isStock ? "stock" : "crypto";
   const searchQuery = ticker ? `${ticker} ${suffix}` : suffix;
   const searchUrl = `https://news.google.com/search?q=${encodeURIComponent(searchQuery)}`;
   const items = [];
@@ -935,6 +959,8 @@ app.get("/api/crypto-news", async (req, res) => {
       parsed = filterAndSortNewsByDate(parsed, NEWS_MAX_AGE_DAYS, 25);
       if (isStock && (ticker || symbol)) {
         parsed = filterNewsRelevanceForStock(parsed, ticker, symbol);
+      } else if ((topic === "forex" || topic === "commodity" || topic === "etf" || topic === "index") && ticker) {
+        parsed = filterNewsRelevanceForTopic(parsed, ticker, topic === "indices" ? "index" : topic);
       }
       items.push(...parsed);
     } else {
@@ -1086,6 +1112,179 @@ function saveEzBets() {
   fs.writeFileSync(EZ_PEZE_FILE, JSON.stringify([...ezBets.values()], null, 2));
 }
 loadEzBets();
+
+// ─── Referral system: 100 PRE for referee, 500 PRE claimable for referrer ───
+const REFERRAL_FILE = path.join(process.cwd(), "data", "referrals.json");
+const REFERRAL_REFEREE_AMOUNT = 100;
+const REFERRAL_REFERRER_AMOUNT = 500;
+const REFERRAL_INITIAL_CODE_USES = 1;
+const REFERRAL_USER_CODE_MAX_USES = 20;
+
+function generateReferralCode() {
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  let code = "";
+  for (let i = 0; i < 8; i++) code += chars[Math.floor(Math.random() * chars.length)];
+  return code;
+}
+
+let referralData = { initialCodes: [], users: {}, referrerClaimable: {} };
+
+function loadReferrals() {
+  ensureDataDir();
+  if (fs.existsSync(REFERRAL_FILE)) {
+    try {
+      referralData = JSON.parse(fs.readFileSync(REFERRAL_FILE, "utf8"));
+      if (!referralData.initialCodes) referralData.initialCodes = [];
+      if (!referralData.users) referralData.users = {};
+      if (!referralData.referrerClaimable) referralData.referrerClaimable = {};
+    } catch (e) { /* ignore */ }
+  }
+}
+
+function saveReferrals() {
+  ensureDataDir();
+  fs.writeFileSync(REFERRAL_FILE, JSON.stringify(referralData, null, 2));
+}
+
+function findReferralCode(codeNorm) {
+  const c = referralData.initialCodes.find((x) => x.code.toUpperCase() === codeNorm && x.usesLeft > 0);
+  if (c) return { type: "initial", entry: c, owner: null };
+  for (const [addr, u] of Object.entries(referralData.users)) {
+    if (u.myCode && u.myCode.toUpperCase() === codeNorm && (u.myCodeUsesLeft || 0) > 0) {
+      return { type: "user", entry: u, owner: addr };
+    }
+  }
+  return null;
+}
+
+async function referralPayout(address, amountPre) {
+  const key = process.env.REFERRAL_ESCROW_PRIVATE_KEY || process.env.EZ_PEZE_ESCROW_PRIVATE_KEY;
+  if (!key) {
+    console.warn("[Referral] No REFERRAL_ESCROW_PRIVATE_KEY or EZ_PEZE_ESCROW_PRIVATE_KEY - skipping payout");
+    return { ok: false, error: "Payout not configured" };
+  }
+  try {
+    const provider = new ethers.JsonRpcProvider(OMEGA_RPC);
+    const signer = new ethers.Wallet(key, provider);
+    const preAbi = ["function transfer(address to, uint256 amount) returns (bool)"];
+    const pre = new ethers.Contract(PRE_ADDRESS, preAbi, signer);
+    const wei = ethers.parseUnits(String(amountPre), 18);
+    const tx = await pre.transfer(address, wei);
+    await tx.wait();
+    return { ok: true, txHash: tx.hash };
+  } catch (e) {
+    console.error("[Referral] Payout error:", e.message);
+    return { ok: false, error: e.message };
+  }
+}
+
+loadReferrals();
+
+app.get("/api/referral/config", (req, res) => {
+  res.json({
+    refereeAmount: REFERRAL_REFEREE_AMOUNT,
+    referrerAmount: REFERRAL_REFERRER_AMOUNT,
+    payoutsEnabled: !!(process.env.REFERRAL_ESCROW_PRIVATE_KEY || process.env.EZ_PEZE_ESCROW_PRIVATE_KEY),
+  });
+});
+
+app.get("/api/referral/me", (req, res) => {
+  const address = (req.query.address || "").toLowerCase();
+  if (!address || !ethers.isAddress(address)) return res.status(400).json({ error: "Valid address required" });
+  const user = referralData.users[address];
+  const hasClaimedReferee = !!user?.hasClaimedReferee;
+  const myCode = user?.myCode || null;
+  const myCodeUsesLeft = user?.myCodeUsesLeft ?? 0;
+  const referrerClaimable = Number(referralData.referrerClaimable[address]) || 0;
+  res.json({
+    hasClaimedReferee,
+    myCode,
+    myCodeUsesLeft,
+    referrerClaimable,
+  });
+});
+
+app.post("/api/referral/claim-referee", async (req, res) => {
+  const address = (req.body.address || "").toLowerCase();
+  const rawCode = (req.body.code || "").trim();
+  if (!address || !ethers.isAddress(address)) return res.status(400).json({ error: "Valid address required" });
+  if (!rawCode) return res.status(400).json({ error: "Referral code required" });
+  const codeNorm = rawCode.toUpperCase();
+
+  const existing = referralData.users[address];
+  if (existing?.hasClaimedReferee) return res.status(400).json({ error: "You have already claimed your 100 PRE" });
+
+  const found = findReferralCode(codeNorm);
+  if (!found) return res.status(400).json({ error: "Invalid or expired referral code" });
+
+  if (found.type === "initial") {
+    found.entry.usesLeft = (found.entry.usesLeft || 1) - 1;
+    if (found.entry.usesLeft <= 0) {
+      referralData.initialCodes = referralData.initialCodes.filter((c) => c.code !== found.entry.code);
+    }
+  } else {
+    found.entry.myCodeUsesLeft = (found.entry.myCodeUsesLeft || 0) - 1;
+    const referrerAddr = found.owner;
+    referralData.referrerClaimable[referrerAddr] = (Number(referralData.referrerClaimable[referrerAddr]) || 0) + REFERRAL_REFERRER_AMOUNT;
+  }
+
+  let newCode = generateReferralCode();
+  while (referralData.initialCodes.some((c) => c.code === newCode) || Object.values(referralData.users).some((u) => u.myCode === newCode)) {
+    newCode = generateReferralCode();
+  }
+
+  referralData.users[address] = {
+    hasClaimedReferee: true,
+    myCode: newCode,
+    myCodeUsesLeft: REFERRAL_USER_CODE_MAX_USES,
+  };
+
+  const payout = await referralPayout(address, REFERRAL_REFEREE_AMOUNT);
+  saveReferrals();
+
+  if (!payout.ok) {
+    return res.status(503).json({ error: "Claim recorded but payout failed. Contact support.", txHash: null, referrerClaimable: 0 });
+  }
+  res.json({
+    message: "Claimed 100 PRE",
+    txHash: payout.txHash,
+    myCode: newCode,
+    referrerClaimable: 0,
+  });
+});
+
+app.post("/api/referral/claim-referrer", async (req, res) => {
+  const address = (req.body.address || "").toLowerCase();
+  if (!address || !ethers.isAddress(address)) return res.status(400).json({ error: "Valid address required" });
+  const claimable = Number(referralData.referrerClaimable[address]) || 0;
+  if (claimable <= 0) return res.status(400).json({ error: "No PRE to claim" });
+
+  const payout = await referralPayout(address, claimable);
+  if (!payout.ok) return res.status(503).json({ error: payout.error || "Payout failed" });
+  referralData.referrerClaimable[address] = 0;
+  saveReferrals();
+  res.json({ message: `Claimed ${claimable} PRE`, txHash: payout.txHash, claimed: claimable });
+});
+
+app.post("/api/referral/admin/generate-initial-codes", (req, res) => {
+  const adminAddr = (req.headers["x-admin-address"] || req.body?.adminAddress || "").toLowerCase();
+  if (adminAddr !== ADMIN_WALLET) return res.status(403).json({ error: "Admin wallet required" });
+  const count = Math.min(parseInt(req.body.count, 10) || 20, 100);
+  const existing = new Set(referralData.initialCodes.map((c) => c.code));
+  for (const u of Object.values(referralData.users)) {
+    if (u.myCode) existing.add(u.myCode);
+  }
+  const added = [];
+  for (let i = 0; i < count; i++) {
+    let code = generateReferralCode();
+    while (existing.has(code)) code = generateReferralCode();
+    existing.add(code);
+    referralData.initialCodes.push({ code, usesLeft: REFERRAL_INITIAL_CODE_USES });
+    added.push(code);
+  }
+  saveReferrals();
+  res.json({ message: `Generated ${added.length} referral codes`, codes: added });
+});
 
 // 0x pair config for EZ Peeze resolution: pairId -> { chainId, sellToken, buyToken, buyDecimals }
 const ZEROX_PAIRS = {
@@ -1694,7 +1893,23 @@ app.get("/api/prediction/markets", async (req, res) => {
       return res.json(list);
     }
 
-    // Multiple parallel fetches to get deep coverage across categories + sort modes
+    // Light load: single request (fast initial "Popular" view); full load only when user picks a category
+    if (req.query.light === "true") {
+      try {
+        const url = `${POLYMARKET_GAMMA}/events?closed=false&active=true&limit=25&order=volume24hr&ascending=false`;
+        const r = await fetch(url);
+        if (!r.ok) return res.json([]);
+        const data = await r.json();
+        const list = (Array.isArray(data) ? data : data.events || [])
+          .filter((e) => { const end = e.endDate || e.end_date; return !(end && new Date(end).getTime() < Date.now()); })
+          .map((e) => { const n = normalizeEvent(e); n.section = "trending"; return n; });
+        return res.json(list);
+      } catch {
+        return res.json([]);
+      }
+    }
+
+    // Full load: multiple parallel fetches for deep coverage
     const POPULAR_TAGS = [
       "crypto", "bitcoin", "ethereum", "xrp",
       "sports", "soccer", "mlb",
