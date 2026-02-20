@@ -486,14 +486,18 @@ const coingeckoMarketInFlight = new Map(); // id -> Promise<data>
 // Free fallbacks when CoinGecko 429s (no API key): CoinCap, Kraken
 const EMPTY_MARKET = { volume24h: null, high24h: null, low24h: null, changePercent24h: null, marketCap: null, marketCapRank: null, ath: null, athChangePercent: null, athDate: null, atl: null, atlChangePercent: null, atlDate: null, circulatingSupply: null, totalSupply: null, maxSupply: null, fullyDilutedValuation: null, lastUpdated: null };
 
-async function fetchCoinCapPrice(id) {
+async function fetchCoinCapMarket(id) {
   try {
     const r = await fetch(`https://api.coincap.io/v2/assets/${encodeURIComponent(id)}`, { headers: { Accept: "application/json" } });
     if (!r.ok) return null;
     const j = await r.json();
-    const p = j?.data?.priceUsd;
-    const price = p != null ? parseFloat(p) : NaN;
-    return Number.isFinite(price) && price > 0 ? price : null;
+    const d = j?.data;
+    if (!d) return null;
+    const price = parseFloat(d.priceUsd);
+    if (!Number.isFinite(price) || price <= 0) return null;
+    const volume24h = d.volumeUsd24Hr != null ? parseFloat(d.volumeUsd24Hr) : null;
+    const changePercent24h = d.changePercent24Hr != null ? parseFloat(d.changePercent24Hr) : null;
+    return { price, volume24h: Number.isFinite(volume24h) ? volume24h : null, high24h: null, low24h: null, changePercent24h: Number.isFinite(changePercent24h) ? changePercent24h : null, ...EMPTY_MARKET };
   } catch (e) {
     return null;
   }
@@ -509,7 +513,7 @@ const CG_TO_KRAKEN_PAIR = {
   dogwifhat: "WIFUSD", worldcoin: "WLDUSD", "jupiter-exchange-solana": "JUPUSD", "pyth-network": "PYTHUSD",
 };
 
-async function fetchKrakenPrice(pair) {
+async function fetchKrakenMarket(pair) {
   try {
     const r = await fetch(`https://api.kraken.com/0/public/Ticker?pair=${encodeURIComponent(pair)}`, { headers: { Accept: "application/json" } });
     if (!r.ok) return null;
@@ -517,19 +521,24 @@ async function fetchKrakenPrice(pair) {
     const result = j?.result;
     if (!result || j.error?.length) return null;
     const key = Object.keys(result)[0];
-    const ticker = result[key];
-    if (!ticker?.c?.[0]) return null;
-    const price = parseFloat(ticker.c[0]);
-    return Number.isFinite(price) && price > 0 ? price : null;
+    const t = result[key];
+    if (!t?.c?.[0]) return null;
+    const price = parseFloat(t.c[0]);
+    if (!Number.isFinite(price) || price <= 0) return null;
+    const high24h = t.h?.[1] != null ? parseFloat(t.h[1]) : null;
+    const low24h = t.l?.[1] != null ? parseFloat(t.l[1]) : null;
+    const vol = t.v?.[1] != null ? parseFloat(t.v[1]) : null;
+    const volume24h = Number.isFinite(vol) && vol > 0 ? vol * price : null;
+    return { price, high24h: Number.isFinite(high24h) ? high24h : null, low24h: Number.isFinite(low24h) ? low24h : null, volume24h, changePercent24h: null, ...EMPTY_MARKET };
   } catch (e) {
     return null;
   }
 }
 
-async function fetchKrakenPriceByCgId(id) {
+async function fetchKrakenMarketByCgId(id) {
   const pair = CG_TO_KRAKEN_PAIR[id];
   if (!pair) return null;
-  return fetchKrakenPrice(pair);
+  return fetchKrakenMarket(pair);
 }
 
 const CG_TO_KUCOIN = {
@@ -540,14 +549,19 @@ const CG_TO_KUCOIN = {
   near: "NEAR-USDT", "fetch-ai": "FET-USDT", "render-token": "RNDR-USDT",
 };
 
-async function fetchKuCoinPrice(symbol) {
+async function fetchKuCoinMarket(symbol) {
   try {
-    const r = await fetch(`https://api.kucoin.com/api/v1/market/orderbook/level1?symbol=${encodeURIComponent(symbol)}`, { headers: { Accept: "application/json" } });
+    const r = await fetch(`https://api.kucoin.com/api/v1/market/stats?symbol=${encodeURIComponent(symbol)}`, { headers: { Accept: "application/json" } });
     if (!r.ok) return null;
     const j = await r.json();
-    const p = j?.data?.price;
-    const price = p != null ? parseFloat(p) : NaN;
-    return Number.isFinite(price) && price > 0 ? price : null;
+    const d = j?.data;
+    if (!d) return null;
+    const price = d.last != null ? parseFloat(d.last) : NaN;
+    if (!Number.isFinite(price) || price <= 0) return null;
+    const high24h = d.high != null ? parseFloat(d.high) : null;
+    const low24h = d.low != null ? parseFloat(d.low) : null;
+    const volValue = d.volValue != null ? parseFloat(d.volValue) : null;
+    return { price, high24h: Number.isFinite(high24h) ? high24h : null, low24h: Number.isFinite(low24h) ? low24h : null, volume24h: Number.isFinite(volValue) ? volValue : null, changePercent24h: d.changeRate != null ? parseFloat(d.changeRate) * 100 : null, ...EMPTY_MARKET };
   } catch (e) {
     return null;
   }
@@ -560,14 +574,20 @@ const CG_TO_OKX = {
   pepe: "PEPE-USDT", aptos: "APT-USDT", sui: "SUI-USDT", near: "NEAR-USDT",
 };
 
-async function fetchOKXPrice(instId) {
+async function fetchOKXMarket(instId) {
   try {
     const r = await fetch(`https://www.okx.com/api/v5/market/ticker?instId=${encodeURIComponent(instId)}`, { headers: { Accept: "application/json" } });
     if (!r.ok) return null;
     const j = await r.json();
-    const last = j?.data?.[0]?.last;
-    const price = last != null ? parseFloat(last) : NaN;
-    return Number.isFinite(price) && price > 0 ? price : null;
+    const d = j?.data?.[0];
+    if (!d) return null;
+    const price = d.last != null ? parseFloat(d.last) : NaN;
+    if (!Number.isFinite(price) || price <= 0) return null;
+    const high24h = d.high24h != null ? parseFloat(d.high24h) : null;
+    const low24h = d.low24h != null ? parseFloat(d.low24h) : null;
+    const vol = d.vol24h != null ? parseFloat(d.vol24h) : null;
+    const volume24h = Number.isFinite(vol) && vol > 0 && Number.isFinite(price) ? vol * price : null;
+    return { price, high24h: Number.isFinite(high24h) ? high24h : null, low24h: Number.isFinite(low24h) ? low24h : null, volume24h, changePercent24h: null, ...EMPTY_MARKET };
   } catch (e) {
     return null;
   }
@@ -579,14 +599,19 @@ const CG_TO_BITFINEX = {
   uniswap: "tUNI:USD", polkadot: "tDOT:USD", "avalanche-2": "tAVAX:USD",
 };
 
-async function fetchBitfinexPrice(symbol) {
+async function fetchBitfinexMarket(symbol) {
   try {
     const r = await fetch(`https://api-pub.bitfinex.com/v2/ticker/${encodeURIComponent(symbol)}`, { headers: { Accept: "application/json" } });
     if (!r.ok) return null;
     const arr = await r.json();
-    if (!Array.isArray(arr) || arr.length < 7) return null;
-    const price = parseFloat(arr[6]); // last price
-    return Number.isFinite(price) && price > 0 ? price : null;
+    if (!Array.isArray(arr) || arr.length < 11) return null;
+    const price = parseFloat(arr[7]);
+    if (!Number.isFinite(price) || price <= 0) return null;
+    const volume = parseFloat(arr[8]);
+    const high = parseFloat(arr[9]);
+    const low = parseFloat(arr[10]);
+    const volume24h = Number.isFinite(volume) && volume > 0 ? volume * price : null;
+    return { price, high24h: Number.isFinite(high) ? high : null, low24h: Number.isFinite(low) ? low : null, volume24h, changePercent24h: null, ...EMPTY_MARKET };
   } catch (e) {
     return null;
   }
@@ -640,42 +665,42 @@ async function fetchCoingeckoMarket(id) {
   }
 }
 
-// Try CoinGecko first; on 429/fail use free no-key APIs: CoinCap, Kraken, KuCoin, OKX
+// Try CoinGecko first; on 429/fail use free no-key APIs (CoinCap, Kraken, KuCoin, OKX, Bitfinex) — all return price + 24h high/low/volume when available
 async function fetchMarketWithFallbacks(id) {
   let data = await fetchCoingeckoMarket(id);
   if (data) return data;
-  let price = await fetchCoinCapPrice(id);
-  if (price != null && price > 0) {
+  data = await fetchCoinCapMarket(id);
+  if (data) {
     console.log("[Price] market fallback CoinCap ok", id);
-    return { price, ...EMPTY_MARKET };
+    return data;
   }
-  price = await fetchKrakenPriceByCgId(id);
-  if (price != null && price > 0) {
+  data = await fetchKrakenMarketByCgId(id);
+  if (data) {
     console.log("[Price] market fallback Kraken ok", id);
-    return { price, ...EMPTY_MARKET };
+    return data;
   }
   const kucoinSym = CG_TO_KUCOIN[id];
   if (kucoinSym) {
-    price = await fetchKuCoinPrice(kucoinSym);
-    if (price != null && price > 0) {
+    data = await fetchKuCoinMarket(kucoinSym);
+    if (data) {
       console.log("[Price] market fallback KuCoin ok", id);
-      return { price, ...EMPTY_MARKET };
+      return data;
     }
   }
   const okxInst = CG_TO_OKX[id];
   if (okxInst) {
-    price = await fetchOKXPrice(okxInst);
-    if (price != null && price > 0) {
+    data = await fetchOKXMarket(okxInst);
+    if (data) {
       console.log("[Price] market fallback OKX ok", id);
-      return { price, ...EMPTY_MARKET };
+      return data;
     }
   }
   const bfxSym = CG_TO_BITFINEX[id];
   if (bfxSym) {
-    price = await fetchBitfinexPrice(bfxSym);
-    if (price != null && price > 0) {
+    data = await fetchBitfinexMarket(bfxSym);
+    if (data) {
       console.log("[Price] market fallback Bitfinex ok", id);
-      return { price, ...EMPTY_MARKET };
+      return data;
     }
   }
   return null;
@@ -742,6 +767,43 @@ app.get("/api/binance-price", async (req, res) => {
   return res.status(502).json({ error: "Price unavailable", symbol });
 });
 
+// Stock quote (Yahoo Finance) for stocks tab — free, no API key
+const stockQuoteCache = new Map(); // symbol -> { data, ts }
+const STOCK_QUOTE_CACHE_TTL_MS = 2 * 60 * 1000; // 2 min
+app.get("/api/stock-quote", async (req, res) => {
+  const symbol = (req.query.symbol || "").trim().toUpperCase();
+  if (!symbol) return res.status(400).json({ error: "Missing symbol" });
+  const cached = stockQuoteCache.get(symbol);
+  if (cached && Date.now() - cached.ts < STOCK_QUOTE_CACHE_TTL_MS && cached.data) {
+    return res.json(cached.data);
+  }
+  try {
+    const { default: YahooFinance } = await import("yahoo-finance2");
+    const yahooFinance = new YahooFinance();
+    const quote = await yahooFinance.quote(symbol);
+    if (!quote || (quote.regularMarketPrice != null && !Number.isFinite(Number(quote.regularMarketPrice)))) {
+      return res.status(404).json({ error: "Quote not found", symbol });
+    }
+    const price = Number(quote.regularMarketPrice);
+    const changePercent = quote.regularMarketChangePercent != null ? Number(quote.regularMarketChangePercent) : null;
+    const data = {
+      price,
+      changePercent,
+      regularMarketChangePercent: changePercent,
+      regularMarketDayHigh: quote.regularMarketDayHigh != null ? Number(quote.regularMarketDayHigh) : null,
+      regularMarketDayLow: quote.regularMarketDayLow != null ? Number(quote.regularMarketDayLow) : null,
+      volume: quote.regularMarketVolume != null ? Number(quote.regularMarketVolume) : null,
+      marketCap: quote.marketCap != null ? Number(quote.marketCap) : null,
+      lastUpdated: quote.regularMarketTime ? new Date(quote.regularMarketTime).toISOString() : null,
+    };
+    stockQuoteCache.set(symbol, { data, ts: Date.now() });
+    return res.json(data);
+  } catch (e) {
+    console.warn("[Stock] quote failed for", symbol, e.message);
+    return res.status(502).json({ error: "Stock quote unavailable", symbol });
+  }
+});
+
 // Fallback endpoint for non-EVM pairs (e.g. SOL/USDC) if frontend fails
 app.get("/api/non-evm-price", async (req, res) => {
   const pairId = (req.query.pairId || "").trim();
@@ -806,9 +868,56 @@ function parseGoogleNewsRss(xml) {
   return items;
 }
 
+// Filter to recent items only (last N days), exclude future dates, sort newest first
+const NEWS_MAX_AGE_DAYS = 14;
+function filterAndSortNewsByDate(items, maxAgeDays = NEWS_MAX_AGE_DAYS, limit = 25) {
+  const now = Date.now();
+  const cutoff = now - maxAgeDays * 24 * 60 * 60 * 1000;
+  const withDate = items.map((item) => {
+    const raw = item.publishedAt;
+    const date = raw ? new Date(raw) : null;
+    const ts = date && !isNaN(date.getTime()) ? date.getTime() : null;
+    return { ...item, _ts: ts };
+  });
+  const filtered = withDate.filter((item) => {
+    if (item._ts == null) return true; // keep items with no date so we don't drop everything if parsing fails
+    if (item._ts > now) return false; // drop future dates (bad RSS data)
+    if (item._ts < cutoff) return false; // drop older than maxAgeDays
+    return true;
+  });
+  filtered.sort((a, b) => {
+    const ta = a._ts ?? 0;
+    const tb = b._ts ?? 0;
+    return tb - ta; // newest first
+  });
+  const out = filtered.slice(0, limit).map(({ _ts, ...item }) => {
+    const publishedAt = item.publishedAt;
+    const iso = _ts != null ? new Date(_ts).toISOString() : publishedAt;
+    return { ...item, publishedAt: iso };
+  });
+  return out;
+}
+
+// For stocks: keep only articles whose title mentions the company name or ticker symbol
+function filterNewsRelevanceForStock(items, ticker, symbol) {
+  if (!ticker && !symbol) return items;
+  const tickerLower = (ticker || "").toLowerCase();
+  const symbolLower = (symbol || "").toLowerCase();
+  return items.filter((item) => {
+    const title = (item.title || "").toLowerCase();
+    if (tickerLower && title.includes(tickerLower)) return true;
+    if (symbolLower && title.includes(symbolLower)) return true;
+    return false;
+  });
+}
+
 app.get("/api/crypto-news", async (req, res) => {
-  const ticker = (req.query.ticker || req.query.q || "").trim().toUpperCase();
-  const searchQuery = ticker ? `${ticker} crypto` : "crypto";
+  const isStock = (req.query.topic || req.query.type || "").toLowerCase() === "stock";
+  const rawTicker = (req.query.ticker || req.query.q || "").trim();
+  const ticker = isStock ? rawTicker : rawTicker.toUpperCase();
+  const symbol = (req.query.symbol || "").trim().toUpperCase(); // e.g. ADBE for stocks
+  const suffix = isStock ? "stock" : "crypto";
+  const searchQuery = ticker ? `${ticker} ${suffix}` : suffix;
   const searchUrl = `https://news.google.com/search?q=${encodeURIComponent(searchQuery)}`;
   const items = [];
   try {
@@ -822,8 +931,12 @@ app.get("/api/crypto-news", async (req, res) => {
     });
     const xml = await r.text();
     if (r.ok && xml && xml.includes("<item>")) {
-      const parsed = parseGoogleNewsRss(xml);
-      items.push(...parsed.slice(0, 25));
+      let parsed = parseGoogleNewsRss(xml);
+      parsed = filterAndSortNewsByDate(parsed, NEWS_MAX_AGE_DAYS, 25);
+      if (isStock && (ticker || symbol)) {
+        parsed = filterNewsRelevanceForStock(parsed, ticker, symbol);
+      }
+      items.push(...parsed);
     } else {
       console.warn("[crypto-news] No items from Google RSS", { ticker: searchQuery, status: r.status, xmlLen: xml?.length });
     }
@@ -852,7 +965,7 @@ app.get("/api/news", async (req, res) => {
     const xml = await r.text();
     if (r.ok && xml && xml.includes("<item>")) {
       const parsed = parseGoogleNewsRss(xml);
-      items.push(...parsed.slice(0, 20));
+      items.push(...filterAndSortNewsByDate(parsed, NEWS_MAX_AGE_DAYS, 20));
     } else {
       console.warn("[news] No items from Google RSS", { query: searchQuery, status: r.status, xmlLen: xml?.length });
     }

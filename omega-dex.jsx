@@ -887,11 +887,136 @@ function formatPriceForDisplay(price) {
 }
 
 // Always return a string for Current Price so the UI is never blank.
-function getCurrentPriceDisplay(orderBook, nonEvmPair, nonEvmPriceFailed) {
+function getCurrentPriceDisplay(orderBook, nonEvmPair, nonEvmPriceFailed, stockPair) {
   if (nonEvmPair && (nonEvmPriceFailed || orderBook?.midPrice === 0)) return "\u2014"; // em dash
+  if (stockPair && (orderBook?.midPrice == null || orderBook?.midPrice === 0)) return "\u2014"; // loading or failed
   const p = orderBook?.midPrice;
   if (p != null && Number(p) > 0) return formatPriceForDisplay(p);
   return "0.0000";
+}
+
+// Crypto logo for pair bar: CoinGecko-based CDN (jsDelivr), fallback to first letter
+function CryptoPairLogo({ baseToken, coingeckoId, size = 32, theme = "dark" }) {
+  const [imgFailed, setImgFailed] = useState(false);
+  const letter = (baseToken || "?")[0].toUpperCase();
+  const logoUrl = coingeckoId
+    ? `https://cdn.jsdelivr.net/gh/simplr-sh/coin-logos/images/${encodeURIComponent(coingeckoId)}/standard.png`
+    : null;
+  if (!logoUrl) {
+    return (
+      <div
+        style={{
+          width: size,
+          height: size,
+          borderRadius: 8,
+          background: theme === "dark" ? "rgba(255,255,255,0.12)" : "rgba(0,0,0,0.08)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          fontSize: Math.round(size * 0.5),
+          fontWeight: 700,
+          color: theme === "dark" ? "#fff" : "#1a1a1a",
+          flexShrink: 0,
+        }}
+        aria-hidden
+      >
+        {letter}
+      </div>
+    );
+  }
+  if (imgFailed) {
+    return (
+      <div
+        style={{
+          width: size,
+          height: size,
+          borderRadius: 8,
+          background: theme === "dark" ? "rgba(255,255,255,0.12)" : "rgba(0,0,0,0.08)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          fontSize: Math.round(size * 0.5),
+          fontWeight: 700,
+          color: theme === "dark" ? "#fff" : "#1a1a1a",
+          flexShrink: 0,
+        }}
+        aria-hidden
+      >
+        {letter}
+      </div>
+    );
+  }
+  return (
+    <img
+      src={logoUrl}
+      alt=""
+      width={size}
+      height={size}
+      style={{ width: size, height: size, borderRadius: 8, objectFit: "contain", flexShrink: 0, background: theme === "dark" ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.04)" }}
+      onError={() => setImgFailed(true)}
+    />
+  );
+}
+
+// Stock logo for pair bar: direct logoUrl first (Wikipedia etc), then Clearbit/favicon, then letter
+const LOGO_SOURCES = [
+  (d) => `https://logo.clearbit.com/${d}`,
+  (d) => `https://www.google.com/s2/favicons?domain=${d}&sz=128`,
+];
+function StockPairLogo({ pair, size = 32, theme = "dark" }) {
+  const [sourceIndex, setSourceIndex] = useState(-1); // -1 = try logoUrl (or first API), 0+ = API index, 99 = letter
+  const domain = pair?.logoDomain;
+  const directUrl = pair?.logoUrl;
+  const letter = (pair?.baseToken || "?")[0].toUpperCase();
+  if (!domain && !directUrl) return null;
+
+  const showLetter = sourceIndex === 99 || (sourceIndex >= LOGO_SOURCES.length && sourceIndex >= 0);
+  const currentSrc =
+    sourceIndex === -1 && directUrl
+      ? directUrl
+      : sourceIndex >= 0 && sourceIndex < LOGO_SOURCES.length && domain
+        ? LOGO_SOURCES[sourceIndex](domain)
+        : null;
+
+  if (showLetter || !currentSrc) {
+    return (
+      <div
+        style={{
+          width: size,
+          height: size,
+          borderRadius: 8,
+          background: theme === "dark" ? "rgba(255,255,255,0.12)" : "rgba(0,0,0,0.08)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          fontSize: Math.round(size * 0.5),
+          fontWeight: 700,
+          color: theme === "dark" ? "#fff" : "#1a1a1a",
+          flexShrink: 0,
+        }}
+        aria-hidden
+      >
+        {letter}
+      </div>
+    );
+  }
+  return (
+    <img
+      key={currentSrc}
+      src={currentSrc}
+      alt=""
+      width={size}
+      height={size}
+      style={{ width: size, height: size, borderRadius: 8, objectFit: "contain", flexShrink: 0, background: theme === "dark" ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.04)" }}
+      onError={() => {
+        setSourceIndex((i) => {
+          if (i === -1 && directUrl) return 0; // try first API after direct failed
+          if (i >= 0 && i < LOGO_SOURCES.length - 1) return i + 1;
+          return 99; // letter
+        });
+      }}
+    />
+  );
 }
 
 // Relayer: server calls Binance 1:1, returns price to the site. No CORS; no scraping the chart (TradingView widget doesn't expose price).
@@ -1032,6 +1157,45 @@ const NON_EVM_PAIRS = [
   { id: "APT/USDC", baseToken: "APT", quoteToken: "USDC", tradingViewSymbol: "BINANCE:APTUSDT", chainLabel: "Aptos", coingeckoId: "aptos" },
 ];
 
+// Stocks: TradingView symbol + logo. logoUrl = direct image (Wikipedia Commons etc); logoDomain = fallback for Clearbit/favicon.
+const STOCK_PAIRS = [
+  { id: "DIS/USD", baseToken: "Disney", quoteToken: "USD", tradingViewSymbol: "NYSE:DIS", stockSymbol: "DIS", logoDomain: "disney.com", logoUrl: "https://upload.wikimedia.org/wikipedia/commons/7/77/The_Walt_Disney_Company_2021_logo.svg" },
+  { id: "AAPL/USD", baseToken: "Apple", quoteToken: "USD", tradingViewSymbol: "NASDAQ:AAPL", stockSymbol: "AAPL", logoDomain: "apple.com", logoUrl: "https://upload.wikimedia.org/wikipedia/commons/f/fa/Apple_logo_black.svg" },
+  { id: "TSLA/USD", baseToken: "Tesla", quoteToken: "USD", tradingViewSymbol: "NASDAQ:TSLA", stockSymbol: "TSLA", logoDomain: "tesla.com", logoUrl: "https://upload.wikimedia.org/wikipedia/commons/e/e8/Tesla_logo.png" },
+  { id: "MSFT/USD", baseToken: "Microsoft", quoteToken: "USD", tradingViewSymbol: "NASDAQ:MSFT", stockSymbol: "MSFT", logoDomain: "microsoft.com", logoUrl: "https://upload.wikimedia.org/wikipedia/commons/9/96/Microsoft_logo_%282012%29.svg" },
+  { id: "AMZN/USD", baseToken: "Amazon", quoteToken: "USD", tradingViewSymbol: "NASDAQ:AMZN", stockSymbol: "AMZN", logoDomain: "amazon.com", logoUrl: "https://upload.wikimedia.org/wikipedia/commons/a/a9/Amazon_logo.svg" },
+  { id: "GOOGL/USD", baseToken: "Google", quoteToken: "USD", tradingViewSymbol: "NASDAQ:GOOGL", stockSymbol: "GOOGL", logoDomain: "google.com", logoUrl: "https://upload.wikimedia.org/wikipedia/commons/2/2f/Google_2015_logo.svg" },
+  { id: "META/USD", baseToken: "Meta", quoteToken: "USD", tradingViewSymbol: "NASDAQ:META", stockSymbol: "META", logoDomain: "meta.com", logoUrl: "https://upload.wikimedia.org/wikipedia/commons/7/7b/Meta_Platforms_Inc._logo.svg" },
+  { id: "NFLX/USD", baseToken: "Netflix", quoteToken: "USD", tradingViewSymbol: "NASDAQ:NFLX", stockSymbol: "NFLX", logoDomain: "netflix.com", logoUrl: "https://upload.wikimedia.org/wikipedia/commons/0/08/Netflix_2015_logo.svg" },
+  { id: "NVDA/USD", baseToken: "NVIDIA", quoteToken: "USD", tradingViewSymbol: "NASDAQ:NVDA", stockSymbol: "NVDA", logoDomain: "nvidia.com", logoUrl: "https://upload.wikimedia.org/wikipedia/commons/4/4e/Nvidia_logo.svg" },
+  { id: "JPM/USD", baseToken: "JPMorgan", quoteToken: "USD", tradingViewSymbol: "NYSE:JPM", stockSymbol: "JPM", logoDomain: "jpmorganchase.com", logoUrl: "https://upload.wikimedia.org/wikipedia/commons/f/f7/JPMorgan_Chase_Logo_2008_1.svg" },
+  // Retail & popular
+  { id: "TGT/USD", baseToken: "Target", quoteToken: "USD", tradingViewSymbol: "NYSE:TGT", stockSymbol: "TGT", logoDomain: "target.com", logoUrl: "https://upload.wikimedia.org/wikipedia/commons/9/9a/Target_logo.svg" },
+  { id: "WMT/USD", baseToken: "Walmart", quoteToken: "USD", tradingViewSymbol: "NYSE:WMT", stockSymbol: "WMT", logoDomain: "walmart.com", logoUrl: "https://upload.wikimedia.org/wikipedia/commons/c/ca/Walmart_logo.svg" },
+  { id: "COST/USD", baseToken: "Costco", quoteToken: "USD", tradingViewSymbol: "NASDAQ:COST", stockSymbol: "COST", logoDomain: "costco.com", logoUrl: "https://upload.wikimedia.org/wikipedia/commons/5/59/Costco_Wholesale_logo_2010-10-26.svg" },
+  { id: "HD/USD", baseToken: "Home Depot", quoteToken: "USD", tradingViewSymbol: "NYSE:HD", stockSymbol: "HD", logoDomain: "homedepot.com", logoUrl: "https://upload.wikimedia.org/wikipedia/commons/a/a7/The_Home_Depot_Logo.svg" },
+  { id: "NKE/USD", baseToken: "Nike", quoteToken: "USD", tradingViewSymbol: "NYSE:NKE", stockSymbol: "NKE", logoDomain: "nike.com", logoUrl: "https://upload.wikimedia.org/wikipedia/commons/a/a6/Logo_NIKE.svg" },
+  { id: "SBUX/USD", baseToken: "Starbucks", quoteToken: "USD", tradingViewSymbol: "NASDAQ:SBUX", stockSymbol: "SBUX", logoDomain: "starbucks.com", logoUrl: "https://upload.wikimedia.org/wikipedia/en/d/d3/Starbucks_Corporation_Logo_2011.svg" },
+  { id: "MCD/USD", baseToken: "McDonald's", quoteToken: "USD", tradingViewSymbol: "NYSE:MCD", stockSymbol: "MCD", logoDomain: "mcdonalds.com", logoUrl: "https://upload.wikimedia.org/wikipedia/commons/3/36/McDonald%27s_Golden_Arches.svg" },
+  { id: "KO/USD", baseToken: "Coca-Cola", quoteToken: "USD", tradingViewSymbol: "NYSE:KO", stockSymbol: "KO", logoDomain: "coca-cola.com", logoUrl: "https://upload.wikimedia.org/wikipedia/commons/c/ce/Coca-Cola_logo.svg" },
+  { id: "PEP/USD", baseToken: "PepsiCo", quoteToken: "USD", tradingViewSymbol: "NASDAQ:PEP", stockSymbol: "PEP", logoDomain: "pepsico.com", logoUrl: "https://upload.wikimedia.org/wikipedia/commons/3/36/Pepsi_logo_2014.svg" },
+  // Tech & AI
+  { id: "AMD/USD", baseToken: "AMD", quoteToken: "USD", tradingViewSymbol: "NASDAQ:AMD", stockSymbol: "AMD", logoDomain: "amd.com", logoUrl: "https://upload.wikimedia.org/wikipedia/commons/e/eb/AMD_Logo.svg" },
+  { id: "INTC/USD", baseToken: "Intel", quoteToken: "USD", tradingViewSymbol: "NASDAQ:INTC", stockSymbol: "INTC", logoDomain: "intel.com", logoUrl: "https://upload.wikimedia.org/wikipedia/commons/7/7d/Intel_logo_%282006-2020%29.svg" },
+  { id: "QCOM/USD", baseToken: "Qualcomm", quoteToken: "USD", tradingViewSymbol: "NASDAQ:QCOM", stockSymbol: "QCOM", logoDomain: "qualcomm.com", logoUrl: "https://upload.wikimedia.org/wikipedia/commons/9/93/Qualcomm_Logo.svg" },
+  { id: "IBM/USD", baseToken: "IBM", quoteToken: "USD", tradingViewSymbol: "NYSE:IBM", stockSymbol: "IBM", logoDomain: "ibm.com", logoUrl: "https://upload.wikimedia.org/wikipedia/commons/0/01/IBM_logo.svg" },
+  { id: "ORCL/USD", baseToken: "Oracle", quoteToken: "USD", tradingViewSymbol: "NYSE:ORCL", stockSymbol: "ORCL", logoDomain: "oracle.com", logoUrl: "https://upload.wikimedia.org/wikipedia/commons/5/50/Oracle_logo.svg" },
+  { id: "ADBE/USD", baseToken: "Adobe", quoteToken: "USD", tradingViewSymbol: "NASDAQ:ADBE", stockSymbol: "ADBE", logoDomain: "adobe.com", logoUrl: "https://upload.wikimedia.org/wikipedia/commons/8/8d/Adobe_Corporate_Logo.png" },
+  { id: "CRM/USD", baseToken: "Salesforce", quoteToken: "USD", tradingViewSymbol: "NYSE:CRM", stockSymbol: "CRM", logoDomain: "salesforce.com", logoUrl: "https://upload.wikimedia.org/wikipedia/commons/f/f9/Salesforce.com_logo.svg" },
+  { id: "PLTR/USD", baseToken: "Palantir", quoteToken: "USD", tradingViewSymbol: "NYSE:PLTR", stockSymbol: "PLTR", logoDomain: "palantir.com", logoUrl: "https://upload.wikimedia.org/wikipedia/commons/d/de/Palantir_Technologies_Logo_2020.svg" },
+  { id: "SNOW/USD", baseToken: "Snowflake", quoteToken: "USD", tradingViewSymbol: "NYSE:SNOW", stockSymbol: "SNOW", logoDomain: "snowflake.com", logoUrl: "https://upload.wikimedia.org/wikipedia/commons/f/ff/Snowflake_Logo.svg" },
+  { id: "AVGO/USD", baseToken: "Broadcom", quoteToken: "USD", tradingViewSymbol: "NASDAQ:AVGO", stockSymbol: "AVGO", logoDomain: "broadcom.com", logoUrl: "https://upload.wikimedia.org/wikipedia/commons/2/2f/Broadcom_Logo.svg" },
+  { id: "MU/USD", baseToken: "Micron", quoteToken: "USD", tradingViewSymbol: "NASDAQ:MU", stockSymbol: "MU", logoDomain: "micron.com", logoUrl: "https://upload.wikimedia.org/wikipedia/commons/2/2e/Micron_Technology_2017_Logo.svg" },
+  // Samsung & LG (Korean listings; Yahoo: .KS suffix)
+  { id: "005930/USD", baseToken: "Samsung", quoteToken: "USD", tradingViewSymbol: "KRX:005930", stockSymbol: "005930.KS", logoDomain: "samsung.com", logoUrl: "https://upload.wikimedia.org/wikipedia/commons/2/24/Samsung_Logo.svg" },
+  { id: "066570/USD", baseToken: "LG Electronics", quoteToken: "USD", tradingViewSymbol: "KRX:066570", stockSymbol: "066570.KS", logoDomain: "lg.com", logoUrl: "https://upload.wikimedia.org/wikipedia/commons/b/b8/2021_LG_logo.svg" },
+];
+
 export default function OmegaDEX() {
   const wallet = useWallet();
   const connected = wallet.connected;
@@ -1067,6 +1231,7 @@ export default function OmegaDEX() {
   const [selectedPair, setSelectedPair] = useState("PRE/mUSDC");
   const [pairSearchOpen, setPairSearchOpen] = useState(false);
   const [pairSearchQuery, setPairSearchQuery] = useState("");
+  const [pairDropdownTab, setPairDropdownTab] = useState("crypto"); // "crypto" | "stocks"
   const [favoritePairIds, setFavoritePairIds] = useState(() => {
     try {
       return JSON.parse(localStorage.getItem("omega-favorite-pairs") || "[]");
@@ -1341,10 +1506,14 @@ export default function OmegaDEX() {
 
   const zeroxPair = useMemo(() => ZEROX_PAIRS.find((p) => p.id === selectedPair), [selectedPair]);
   const nonEvmPair = useMemo(() => NON_EVM_PAIRS.find((p) => p.id === selectedPair), [selectedPair]);
-  const chartPair = zeroxPair || nonEvmPair;
+  const stockPair = useMemo(() => STOCK_PAIRS.find((p) => p.id === selectedPair), [selectedPair]);
+  const chartPair = zeroxPair || nonEvmPair || stockPair;
   const isZeroXPair = !!chartPair;
   const isEvmPair = !!zeroxPair;
-  const allPairs = useMemo(() => [...ZEROX_PAIRS, ...NON_EVM_PAIRS, ...pairs], [pairs]);
+  const allPairs = useMemo(() => {
+    if (pairDropdownTab === "stocks") return [...STOCK_PAIRS];
+    return [...ZEROX_PAIRS, ...NON_EVM_PAIRS, ...pairs];
+  }, [pairDropdownTab, pairs]);
   const pairSearchLower = (pairSearchQuery || "").trim().toLowerCase();
   const filteredPairs = useMemo(() => {
     const list = allPairs.length ? allPairs : [{ id: "PRE/mUSDC", baseToken: "PRE", quoteToken: "mUSDC" }];
@@ -1505,8 +1674,8 @@ export default function OmegaDEX() {
 
   const loadData = useCallback(async () => {
     try {
-      // Zerox / nonEvm price is handled by the "fetch price on symbol change" effect — don't duplicate or race it here
-      if (zeroxPair || nonEvmPair) return;
+      // Zerox / nonEvm / stock price is handled by their own effects — don't fetch orderbook here or we overwrite with server default (e.g. 0.0847)
+      if (zeroxPair || nonEvmPair || stockPair) return;
       setApiError(null);
       {
         const [ob, tr, dp] = await Promise.all([
@@ -1521,7 +1690,7 @@ export default function OmegaDEX() {
     } catch (e) {
       setApiError(e.message || "Price temporarily unavailable");
     }
-  }, [selectedPair, zeroxPair, nonEvmPair, wallet.address, API_BASE]);
+  }, [selectedPair, zeroxPair, nonEvmPair, stockPair, wallet.address, API_BASE]);
 
   // Debounced version to avoid flooding API on rapid WS messages
   const loadDataTimerRef = useRef(null);
@@ -1596,6 +1765,68 @@ export default function OmegaDEX() {
     })();
     return () => { cancelled = true; };
   }, [selectedPair, zeroxPair, nonEvmPair, fetchMarketFromBackend]);
+
+  // Stock quote: price + day change when a stock is selected
+  useEffect(() => {
+    if (!stockPair?.stockSymbol) return;
+    let cancelled = false;
+    setApiError(null);
+    (async () => {
+      const urls = [];
+      if (typeof window !== "undefined" && /^https?:\/\/localhost(:\d+)?$|^https?:\/\/127\.0\.0\.1(:\d+)?$/i.test(window.location.origin))
+        urls.push(`/api/stock-quote?symbol=${encodeURIComponent(stockPair.stockSymbol)}`);
+      if (API_BASE) urls.push(`${API_BASE.replace(/\/$/, "")}/api/stock-quote?symbol=${encodeURIComponent(stockPair.stockSymbol)}`);
+      for (const url of urls) {
+        try {
+          const c = new AbortController();
+          const t = setTimeout(() => c.abort(), 12000);
+          const r = await fetch(url, { signal: c.signal });
+          clearTimeout(t);
+          if (cancelled || !r.ok) continue;
+          const data = await r.json().catch(() => ({}));
+          const price = data?.price != null ? Number(data.price) : NaN;
+          if (cancelled) return;
+          if (Number.isFinite(price) && price > 0) {
+            const spread = price * 0.0005;
+            setOrderBook({
+              midPrice: price,
+              asks: [{ price: price + spread, amount: 100, total: 100 * (price + spread) }],
+              bids: [{ price: price - spread, amount: 100, total: 100 * (price - spread) }],
+            });
+            setDepthData({
+              bids: [{ price: price - spread, amount: 100, cumulative: 100 }],
+              asks: [{ price: price + spread, amount: 100, cumulative: 100 }],
+            });
+            setMarketStats({
+              volume24h: data?.volume ?? null,
+              high24h: data?.regularMarketDayHigh ?? null,
+              low24h: data?.regularMarketDayLow ?? null,
+              changePercent24h: data?.changePercent ?? data?.regularMarketChangePercent ?? null,
+              marketCap: data?.marketCap ?? null,
+              marketCapRank: null,
+              ath: null,
+              athChangePercent: null,
+              athDate: null,
+              atl: null,
+              atlChangePercent: null,
+              atlDate: null,
+              circulatingSupply: null,
+              totalSupply: null,
+              maxSupply: null,
+              fullyDilutedValuation: null,
+              lastUpdated: data?.lastUpdated ?? null,
+            });
+            setNonEvmPriceFailed(false);
+            return;
+          }
+        } catch (_) { }
+      }
+      setApiError("Stock price temporarily unavailable");
+      setMarketStats(null);
+      setOrderBook((prev) => (prev.midPrice > 0 ? prev : { asks: [], bids: [], midPrice: 0 }));
+    })();
+    return () => { cancelled = true; };
+  }, [selectedPair, stockPair, API_BASE]);
 
   useEffect(() => {
     loadData();
@@ -1700,6 +1931,36 @@ export default function OmegaDEX() {
     return () => clearInterval(t);
   }, [selectedPair, zeroxPair, nonEvmPair, fetchMarketFromBackend]);
 
+  // Refresh stock quote every 60s when a stock is selected
+  useEffect(() => {
+    if (!stockPair?.stockSymbol) return;
+    const urls = [];
+    if (typeof window !== "undefined" && /^https?:\/\/localhost(:\d+)?$|^https?:\/\/127\.0\.0\.1(:\d+)?$/i.test(window.location.origin))
+      urls.push(`/api/stock-quote?symbol=${encodeURIComponent(stockPair.stockSymbol)}`);
+    if (API_BASE) urls.push(`${API_BASE.replace(/\/$/, "")}/api/stock-quote?symbol=${encodeURIComponent(stockPair.stockSymbol)}`);
+    const t = setInterval(async () => {
+      for (const url of urls) {
+        try {
+          const r = await fetch(url);
+          if (!r.ok) continue;
+          const data = await r.json().catch(() => ({}));
+          const price = data?.price != null ? Number(data.price) : NaN;
+          if (Number.isFinite(price) && price > 0) {
+            const spread = price * 0.0005;
+            setOrderBook({
+              midPrice: price,
+              asks: [{ price: price + spread, amount: 100, total: 100 * (price + spread) }],
+              bids: [{ price: price - spread, amount: 100, total: 100 * (price - spread) }],
+            });
+            setMarketStats((prev) => ({ ...prev, changePercent24h: data?.changePercent ?? data?.regularMarketChangePercent ?? prev?.changePercent24h, lastUpdated: data?.lastUpdated ?? null }));
+          }
+          break;
+        } catch (_) { }
+      }
+    }, 60000);
+    return () => clearInterval(t);
+  }, [selectedPair, stockPair, API_BASE]);
+
   useEffect(() => {
     if (!nonEvmPair) setNonEvmPriceFailed(false);
   }, [nonEvmPair]);
@@ -1773,6 +2034,10 @@ export default function OmegaDEX() {
   const handlePlaceOrder = async () => {
     setOrderError(null);
 
+    if (stockPair) {
+      setOrderError("Stocks are view-only. Charts and prices are for reference.");
+      return;
+    }
     if (!connected || !wallet.address) {
       wallet.connect();
       return;
@@ -2553,11 +2818,29 @@ export default function OmegaDEX() {
                 zIndex: pairSearchOpen ? 10000 : undefined,
               }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 12, position: "relative" }}>
-                  <OmegaLogo width={32} height={32} theme={theme} />
+                  {stockPair?.logoDomain ? (
+                    <StockPairLogo pair={stockPair} size={32} theme={theme} />
+                  ) : zeroxPair || nonEvmPair ? (
+                    <CryptoPairLogo
+                      baseToken={chartPair?.baseToken}
+                      coingeckoId={zeroxPair ? ZEROX_COINGECKO_FALLBACK[chartPair?.baseToken] : nonEvmPair?.coingeckoId}
+                      size={32}
+                      theme={theme}
+                    />
+                  ) : (
+                    <OmegaLogo width={32} height={32} theme={theme} />
+                  )}
                   <div style={{ position: "relative" }}>
                     <button
                       type="button"
-                      onClick={() => { setPairSearchOpen((o) => !o); if (!pairSearchOpen) setPairSearchQuery(""); }}
+                      onClick={() => {
+                        setPairSearchOpen((o) => !o);
+                        if (!pairSearchOpen) {
+                          setPairSearchQuery("");
+                          if (STOCK_PAIRS.some((p) => p.id === selectedPair)) setPairDropdownTab("stocks");
+                          else setPairDropdownTab("crypto");
+                        }
+                      }}
                       style={{
                         background: theme === "dark" ? "rgba(255,255,255,0.06)" : "rgba(255,250,240,0.8)", border: "1px solid " + t.glass.border,
                         borderRadius: 12, padding: isMobile ? "14px 16px" : "8px 12px", fontSize: isMobile ? 16 : 15, fontWeight: 700,
@@ -2573,10 +2856,15 @@ export default function OmegaDEX() {
                         position: "fixed", inset: 0, zIndex: 10002, background: theme === "dark" ? "#0a0a0c" : "#f5f5f5",
                         display: "flex", flexDirection: "column", paddingTop: "env(safe-area-inset-top, 0)",
                       }}>
-                        <div style={{ padding: "16px 12px 12px", borderBottom: "1px solid " + t.glass.border, display: "flex", alignItems: "center", gap: 12 }}>
+                        <div style={{ padding: "12px 12px 8px", borderBottom: "1px solid " + t.glass.border }}>
+                          <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+                            <button type="button" onClick={() => { setPairDropdownTab("crypto"); if (![...ZEROX_PAIRS, ...NON_EVM_PAIRS, ...pairs].some((p) => p.id === selectedPair)) setSelectedPair((ZEROX_PAIRS[0] || { id: "PRE/mUSDC" }).id); }} style={{ flex: 1, padding: "10px 16px", borderRadius: 10, border: "none", background: pairDropdownTab === "crypto" ? (theme === "dark" ? "rgba(212,175,55,0.25)" : "rgba(212,175,55,0.35)") : (theme === "dark" ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.06)"), color: t.glass.text, fontWeight: 600, fontSize: 14, cursor: "pointer" }}>Crypto</button>
+                            <button type="button" onClick={() => { setPairDropdownTab("stocks"); if (!STOCK_PAIRS.some((p) => p.id === selectedPair)) setSelectedPair(STOCK_PAIRS[0]?.id || "AAPL/USD"); }} style={{ flex: 1, padding: "10px 16px", borderRadius: 10, border: "none", background: pairDropdownTab === "stocks" ? (theme === "dark" ? "rgba(212,175,55,0.25)" : "rgba(212,175,55,0.35)") : (theme === "dark" ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.06)"), color: t.glass.text, fontWeight: 600, fontSize: 14, cursor: "pointer" }}>Stocks</button>
+                          </div>
+                          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
                           <input
                             type="text"
-                            placeholder="Search token..."
+                            placeholder={pairDropdownTab === "stocks" ? "Search stock..." : "Search token..."}
                             value={pairSearchQuery}
                             onChange={(e) => setPairSearchQuery(e.target.value)}
                             autoFocus
@@ -2589,10 +2877,11 @@ export default function OmegaDEX() {
                           <button type="button" onClick={() => setPairSearchOpen(false)} style={{
                             padding: "12px 20px", borderRadius: 12, border: "none", background: t.glass.border, color: t.glass.text, fontSize: 14, fontWeight: 600, cursor: "pointer",
                           }}>Done</button>
+                          </div>
                         </div>
                         <div style={{ flex: 1, overflow: "auto", padding: "8px 0 24px" }}>
                           {filteredPairs.length === 0 ? (
-                            <div style={{ padding: 24, color: t.glass.textTertiary, fontSize: 14, textAlign: "center" }}>No tokens match</div>
+                            <div style={{ padding: 24, color: t.glass.textTertiary, fontSize: 14, textAlign: "center" }}>{pairDropdownTab === "stocks" ? "No stocks match" : "No tokens match"}</div>
                           ) : (
                             filteredPairs.map((p) => {
                               const isFav = favoritePairIds.includes(p.id);
@@ -2612,12 +2901,15 @@ export default function OmegaDEX() {
                                     {p.baseToken} / {p.quoteToken}
                                     {p.chainLabel ? (
                                       <span style={{ display: "block", fontSize: 12, color: t.glass.textTertiary, marginTop: 2 }}>{p.chainLabel}</span>
+                                    ) : p.stockSymbol ? (
+                                      <span style={{ display: "block", fontSize: 12, color: t.glass.textTertiary, marginTop: 2 }}>{p.stockSymbol}</span>
                                     ) : p.chainId && p.chainId !== 1 ? (
                                       <span style={{ display: "block", fontSize: 12, color: t.glass.textTertiary, marginTop: 2 }}>
                                         {p.chainId === 137 ? "Polygon" : p.chainId === 42161 ? "Arbitrum" : p.chainId === 10 ? "Optimism" : p.chainId === 8453 ? "Base" : p.chainId === 56 ? "BNB" : p.chainId === 43114 ? "Avalanche" : ""}
                                       </span>
                                     ) : null}
                                   </span>
+                                  {!p.stockSymbol && (
                                   <span
                                     role="button"
                                     tabIndex={0}
@@ -2631,6 +2923,7 @@ export default function OmegaDEX() {
                                   >
                                     {isFav ? "★" : "☆"}
                                   </span>
+                                  )}
                                 </button>
                               );
                             })
@@ -2640,28 +2933,32 @@ export default function OmegaDEX() {
                     ) : pairSearchOpen && !isMobile ? (
                       <div style={{
                         position: "absolute", top: "100%", left: 0, marginTop: 4, zIndex: 10001,
-                        minWidth: 280, maxHeight: 320, overflow: "hidden", display: "flex", flexDirection: "column",
+                        minWidth: 280, maxHeight: 360, overflow: "hidden", display: "flex", flexDirection: "column",
                         background: theme === "dark" ? "#1a1a1e" : "#fff",
                         border: "1px solid " + (theme === "dark" ? "rgba(255,255,255,0.2)" : "rgba(0,0,0,0.12)"),
                         borderRadius: 16,
                         boxShadow: theme === "dark" ? "0 12px 40px rgba(0,0,0,0.6)" : "0 12px 40px rgba(0,0,0,0.15)",
                       }}>
+                        <div style={{ display: "flex", gap: 6, margin: "10px 10px 0", paddingBottom: 8 }}>
+                          <button type="button" onClick={() => { setPairDropdownTab("crypto"); if (![...ZEROX_PAIRS, ...NON_EVM_PAIRS, ...pairs].some((x) => x.id === selectedPair)) setSelectedPair((ZEROX_PAIRS[0] || { id: "PRE/mUSDC" }).id); }} style={{ flex: 1, padding: "8px 12px", borderRadius: 8, border: "none", background: pairDropdownTab === "crypto" ? (theme === "dark" ? "rgba(212,175,55,0.25)" : "rgba(212,175,55,0.35)") : (theme === "dark" ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.06)"), color: theme === "dark" ? "#fff" : "#1a1a1a", fontWeight: 600, fontSize: 12, cursor: "pointer" }}>Crypto</button>
+                          <button type="button" onClick={() => { setPairDropdownTab("stocks"); if (!STOCK_PAIRS.some((x) => x.id === selectedPair)) setSelectedPair(STOCK_PAIRS[0]?.id || "AAPL/USD"); }} style={{ flex: 1, padding: "8px 12px", borderRadius: 8, border: "none", background: pairDropdownTab === "stocks" ? (theme === "dark" ? "rgba(212,175,55,0.25)" : "rgba(212,175,55,0.35)") : (theme === "dark" ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.06)"), color: theme === "dark" ? "#fff" : "#1a1a1a", fontWeight: 600, fontSize: 12, cursor: "pointer" }}>Stocks</button>
+                        </div>
                         <input
                           type="text"
-                          placeholder="Search token or pair..."
+                          placeholder={pairDropdownTab === "stocks" ? "Search stock..." : "Search token or pair..."}
                           value={pairSearchQuery}
                           onChange={(e) => setPairSearchQuery(e.target.value)}
                           onKeyDown={(e) => { if (e.key === "Escape") setPairSearchOpen(false); }}
                           autoFocus
                           style={{
-                            margin: 10, padding: "10px 12px", borderRadius: 10, border: "1px solid " + (theme === "dark" ? "rgba(255,255,255,0.15)" : "rgba(0,0,0,0.1)"),
+                            margin: "0 10px 10px", padding: "10px 12px", borderRadius: 10, border: "1px solid " + (theme === "dark" ? "rgba(255,255,255,0.15)" : "rgba(0,0,0,0.1)"),
                             background: theme === "dark" ? "#0d0d0f" : "#f5f5f5", color: theme === "dark" ? "#fff" : "#1a1a1a",
                             fontSize: 13, outline: "none",
                           }}
                         />
                         <div style={{ overflow: "auto", flex: 1, paddingBottom: 8 }}>
                           {filteredPairs.length === 0 ? (
-                            <div style={{ padding: 16, color: theme === "dark" ? "rgba(255,255,255,0.5)" : "rgba(0,0,0,0.5)", fontSize: 12 }}>No pairs match</div>
+                            <div style={{ padding: 16, color: theme === "dark" ? "rgba(255,255,255,0.5)" : "rgba(0,0,0,0.5)", fontSize: 12 }}>{pairDropdownTab === "stocks" ? "No stocks match" : "No pairs match"}</div>
                           ) : (
                             filteredPairs.map((p) => {
                               const isFav = favoritePairIds.includes(p.id);
@@ -2681,12 +2978,15 @@ export default function OmegaDEX() {
                                     {p.baseToken} / {p.quoteToken}
                                     {p.chainLabel ? (
                                       <span style={{ fontSize: 10, color: theme === "dark" ? "rgba(255,255,255,0.55)" : "rgba(0,0,0,0.5)", marginLeft: 6 }}>{p.chainLabel}</span>
+                                    ) : p.stockSymbol ? (
+                                      <span style={{ fontSize: 10, color: theme === "dark" ? "rgba(255,255,255,0.55)" : "rgba(0,0,0,0.5)", marginLeft: 6 }}>{p.stockSymbol}</span>
                                     ) : p.chainId && p.chainId !== 1 ? (
                                       <span style={{ fontSize: 10, color: theme === "dark" ? "rgba(255,255,255,0.55)" : "rgba(0,0,0,0.5)", marginLeft: 6 }}>
                                         {p.chainId === 137 ? "Polygon" : p.chainId === 42161 ? "Arbitrum" : p.chainId === 10 ? "Optimism" : p.chainId === 8453 ? "Base" : p.chainId === 56 ? "BNB" : p.chainId === 43114 ? "Avalanche" : ""}
                                       </span>
                                     ) : null}
                                   </span>
+                                  {!p.stockSymbol && (
                                   <span
                                     role="button"
                                     tabIndex={0}
@@ -2701,6 +3001,7 @@ export default function OmegaDEX() {
                                   >
                                     {isFav ? "★" : "☆"}
                                   </span>
+                                  )}
                                 </button>
                               );
                             })
@@ -2721,7 +3022,7 @@ export default function OmegaDEX() {
                   )}
                 </div>
                 <div style={{ fontSize: isMobile ? 20 : 24, fontWeight: 700, color: t.glass.green, letterSpacing: "-0.04em" }}>
-                  ${getCurrentPriceDisplay(orderBook, nonEvmPair, nonEvmPriceFailed)}
+                  ${getCurrentPriceDisplay(orderBook, nonEvmPair, nonEvmPriceFailed, stockPair)}
                 </div>
 
                 {!isMobile && (() => {
@@ -3843,7 +4144,7 @@ export default function OmegaDEX() {
                     <div style={{ textAlign: "center" }}>
                       <div style={{ fontSize: 11, color: t.glass.textTertiary, marginBottom: 4, textTransform: "uppercase", letterSpacing: "0.06em" }}>Current Price</div>
                       <div style={{ fontSize: 28, fontWeight: 800, color: "#fff", fontFamily: "'SF Mono', monospace" }}>
-                        {getCurrentPriceDisplay(orderBook, nonEvmPair, nonEvmPriceFailed)}
+                        {getCurrentPriceDisplay(orderBook, nonEvmPair, nonEvmPriceFailed, stockPair)}
                       </div>
                       <div style={{ fontSize: 12, color: t.glass.textTertiary }}>{currentPairInfo.baseToken || "PRE"} / {currentPairInfo.quoteToken || "mUSDC"}</div>
                     </div>
@@ -3953,7 +4254,7 @@ export default function OmegaDEX() {
                       </div>
                       <div style={{ flex: 1, overflow: "hidden", padding: 8, minHeight: 200, minWidth: 0, display: "flex", flexDirection: "column" }}>
                         {zeroxLeftTab === "news" && (
-                          <CryptoNews theme={theme} ticker={chartPair?.baseToken || "ETH"} />
+                          <CryptoNews theme={theme} ticker={chartPair?.baseToken || "ETH"} isStock={!!stockPair} symbol={stockPair?.stockSymbol || ""} />
                         )}
                         {zeroxLeftTab === "technical" && (
                           <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
@@ -4516,7 +4817,7 @@ export default function OmegaDEX() {
                               }),
                             }}
                           >
-                            {!connected ? "Connect Wallet" : orderLoading ? (isZeroXPair ? "Swapping..." : "Placing...") : `${side.toUpperCase()} ${currentPairInfo.baseToken || "PRE"}`}
+                            {stockPair ? "View only" : !connected ? "Connect Wallet" : orderLoading ? (isZeroXPair ? "Swapping..." : "Placing...") : `${side.toUpperCase()} ${currentPairInfo.baseToken || "PRE"}`}
                           </button>
 
                           {connected && !isZeroXPair && (
@@ -4674,7 +4975,7 @@ export default function OmegaDEX() {
                           <div style={{ ...t.panelInner, padding: "12px 16px", borderRadius: 16, textAlign: "center" }}>
                             <div style={{ fontSize: 9, color: t.glass.textTertiary, marginBottom: 2, textTransform: "uppercase", letterSpacing: "0.08em" }}>Current Price</div>
                             <div style={{ fontSize: 36, fontWeight: 800, color: "#fff", fontFamily: "'SF Mono', monospace", letterSpacing: "-0.02em" }}>
-                              {getCurrentPriceDisplay(orderBook, nonEvmPair, nonEvmPriceFailed)}
+                              {getCurrentPriceDisplay(orderBook, nonEvmPair, nonEvmPriceFailed, stockPair)}
                             </div>
                             <div style={{ fontSize: 10, color: t.glass.textTertiary }}>{currentPairInfo.baseToken || "PRE"} / {currentPairInfo.quoteToken || "mUSDC"}</div>
                           </div>

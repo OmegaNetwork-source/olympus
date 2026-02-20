@@ -3,20 +3,27 @@ import React, { useState, useEffect } from "react";
 const API_BASE = (import.meta.env.VITE_API_URL || import.meta.env.VITE_API_BASE || "https://olympus-api-n3xm.onrender.com").replace(/\/$/, "");
 
 /**
- * Google News search for "ticker crypto" – shows recent news for the selected pair.
+ * Google News search – "ticker crypto" for crypto pairs, "ticker stock" for stocks.
  */
-export default function CryptoNews({ theme = "dark", ticker = "ETH" }) {
+export default function CryptoNews({ theme = "dark", ticker = "ETH", isStock = false, symbol = "" }) {
   const [items, setItems] = useState([]);
   const [searchUrl, setSearchUrl] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const topicLabel = isStock ? "stock" : "crypto";
+  // Build link on client so it always matches "X stock" / "X crypto" regardless of API
+  const linkUrl = (ticker && `${ticker} ${topicLabel}`.trim())
+    ? `https://news.google.com/search?q=${encodeURIComponent(`${ticker} ${topicLabel}`.trim())}&hl=en-US&gl=US&ceid=US:en`
+    : searchUrl;
 
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
     setError(null);
-    const q = encodeURIComponent((ticker || "ETH").trim());
-    fetch(`${API_BASE}/api/crypto-news?ticker=${q}`)
+    const q = encodeURIComponent((ticker || (isStock ? "" : "ETH")).trim());
+    const topicParam = isStock ? "&topic=stock" : "";
+    const symbolParam = isStock && symbol ? `&symbol=${encodeURIComponent(symbol)}` : "";
+    fetch(`${API_BASE}/api/crypto-news?ticker=${q}${topicParam}${symbolParam}`)
       .then((r) => r.json())
       .then((data) => {
         if (!cancelled && data.items) setItems(data.items);
@@ -26,7 +33,7 @@ export default function CryptoNews({ theme = "dark", ticker = "ETH" }) {
       .catch((e) => { if (!cancelled) setError(e.message || "Failed to load news"); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [ticker]);
+  }, [ticker, isStock, symbol]);
 
   const isDark = theme === "dark";
   const text = isDark ? "#fff" : "#1a1a1a";
@@ -46,9 +53,9 @@ export default function CryptoNews({ theme = "dark", ticker = "ETH" }) {
     return (
       <div style={{ padding: 24, color: textSecondary, fontSize: 13 }}>
         News temporarily unavailable. Try the search link below.
-        {searchUrl && (
-          <a href={searchUrl} target="_blank" rel="noopener noreferrer" style={{ display: "block", marginTop: 8, color: isDark ? "#7dd3fc" : "#0284c7" }}>
-            Open Google News: “{ticker} crypto”
+        {(linkUrl || searchUrl) && (
+          <a href={linkUrl || searchUrl} target="_blank" rel="noopener noreferrer" style={{ display: "block", marginTop: 8, color: isDark ? "#7dd3fc" : "#0284c7" }}>
+            Open Google News: “{ticker} {topicLabel}”
           </a>
         )}
       </div>
@@ -57,9 +64,9 @@ export default function CryptoNews({ theme = "dark", ticker = "ETH" }) {
 
   return (
     <div style={{ height: "100%", overflow: "auto", padding: "12px 8px", display: "flex", flexDirection: "column", gap: 10 }}>
-      {searchUrl && (
+      {(linkUrl || searchUrl) && (
         <a
-          href={searchUrl}
+          href={linkUrl || searchUrl}
           target="_blank"
           rel="noopener noreferrer"
           style={{
@@ -68,7 +75,7 @@ export default function CryptoNews({ theme = "dark", ticker = "ETH" }) {
             border: `1px solid ${border}`, alignSelf: "flex-start", boxShadow: isDark ? "0 2px 8px rgba(0,0,0,0.2)" : "0 2px 8px rgba(0,0,0,0.06)",
           }}
         >
-          Open “{ticker} crypto” on Google News →
+          Open “{ticker} {topicLabel}” on Google News →
         </a>
       )}
       {items.length === 0 ? (
