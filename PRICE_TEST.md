@@ -75,3 +75,10 @@ The chart and our header use **different data paths**. The chart is fed by Tradi
 2. Run **Binance relayer** test: `curl "https://olympus-api-n3xm.onrender.com/api/binance-price?symbol=AAVEUSDT"` – expect `{"price":...,"symbol":"AAVEUSDT"}`.
 3. If 502: check Render logs; ensure the server can reach `https://api.binance.com/api/v3/ticker/price?symbol=...`.
 4. Redeploy API on Render after any env changes.
+
+## Production (olympus.omeganetwork.co) – “works local, not public”
+
+- **CORS**: The API allows `https://olympus.omeganetwork.co`, `https://www.olympus.omeganetwork.co`, and any `*.omeganetwork.co`. If you use a different origin, set **NODE_ENV=production** on Render so the server allows any origin.
+- **API URL**: The frontend uses `VITE_API_URL` / `VITE_API_BASE` at build time, or falls back to `https://olympus-api-n3xm.onrender.com`. No env needed for that fallback.
+- **Cold start**: Render free tier spins down after ~15 min. The first request can take 30+ seconds. The app uses a 25s timeout and retries every 4s (up to 5 times), so after the service wakes, prices should appear. For faster first load, use a keep-warm cron (e.g. hit `/api/health` every 10 min) or a paid Render plan.
+- **Same-origin /api**: The app tries same-origin `/api/coingecko-price` and `/api/coingecko-market` first. If your host (e.g. Vercel/Netlify) proxies `/api/*` to the Render API URL, prices will work without cross-origin and can avoid cold-start timeouts from the browser.

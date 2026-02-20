@@ -1410,23 +1410,33 @@ export default function OmegaDEX() {
   const activeCgId = zeroxPair ? ZEROX_COINGECKO_FALLBACK[zeroxPair.baseToken] : (nonEvmPair ? nonEvmPair.coingeckoId : null);
 
   // Market data (price + 24h vol, high, low, change %) — one call for header stats
+  const isProdOrigin = typeof window !== "undefined" && !/^https?:\/\/localhost(:\d+)?$|^https?:\/\/127\.0\.0\.1(:\d+)?$/i.test(window.location.origin);
+
   const fetchMarketFromBackend = useCallback(async (cgId) => {
     if (!cgId) return null;
     const id = encodeURIComponent(cgId);
     const urls = [];
-    if (typeof window !== "undefined" && /^https?:\/\/localhost(:\d+)?$|^https?:\/\/127\.0\.0\.1(:\d+)?$/i.test(window.location.origin))
-      urls.push(`/api/coingecko-market?id=${id}`);
+    // Always try same-origin /api first (localhost: Vite proxy; production: works if host proxies /api to Render)
+    if (typeof window !== "undefined") urls.push(`/api/coingecko-market?id=${id}`);
     if (API_BASE) urls.push(`${API_BASE.replace(/\/$/, "")}/api/coingecko-market?id=${id}`);
+    const failures = [];
     for (const url of urls) {
       try {
         const c = new AbortController();
-        const to = setTimeout(() => c.abort(), 12000);
+        // 25s so Render cold start (~30s) can still succeed on retries
+        const to = setTimeout(() => c.abort(), 25000);
         const r = await fetch(url, { signal: c.signal });
         clearTimeout(to);
-        if (!r.ok) continue;
+        if (!r.ok) {
+          if (isProdOrigin) failures.push({ url, status: r.status });
+          continue;
+        }
         const data = await r.json().catch(() => ({}));
         const price = data?.price != null ? Number(data.price) : NaN;
-        if (!Number.isFinite(price) || price <= 0) continue;
+        if (!Number.isFinite(price) || price <= 0) {
+          if (isProdOrigin) failures.push({ url, status: r.status, note: "no valid price in body" });
+          continue;
+        }
         const num = (v) => (v != null && Number.isFinite(Number(v)) ? Number(v) : null);
         const str = (v) => (typeof v === "string" && v ? v : null);
         return {
@@ -1449,7 +1459,12 @@ export default function OmegaDEX() {
           fullyDilutedValuation: num(data?.fullyDilutedValuation),
           lastUpdated: str(data?.lastUpdated),
         };
-      } catch (_) { }
+      } catch (e) {
+        if (isProdOrigin) failures.push({ url, error: e.name || "Error", message: e.message || String(e) });
+      }
+    }
+    if (isProdOrigin && failures.length) {
+      console.warn("[Olympus price] Market fetch failed", { API_BASE, origin: typeof window !== "undefined" ? window.location.origin : "", failures });
     }
     return null;
   }, [API_BASE]);
@@ -1459,20 +1474,29 @@ export default function OmegaDEX() {
     if (!cgId) return NaN;
     const id = encodeURIComponent(cgId);
     const urls = [];
-    if (typeof window !== "undefined" && /^https?:\/\/localhost(:\d+)?$|^https?:\/\/127\.0\.0\.1(:\d+)?$/i.test(window.location.origin))
-      urls.push(`/api/coingecko-price?id=${id}`);
+    if (typeof window !== "undefined") urls.push(`/api/coingecko-price?id=${id}`);
     if (API_BASE) urls.push(`${API_BASE.replace(/\/$/, "")}/api/coingecko-price?id=${id}`);
+    const failures = [];
     for (const url of urls) {
       try {
         const c = new AbortController();
-        const to = setTimeout(() => c.abort(), 12000);
+        const to = setTimeout(() => c.abort(), 25000);
         const r = await fetch(url, { signal: c.signal });
         clearTimeout(to);
-        if (!r.ok) continue;
+        if (!r.ok) {
+          if (isProdOrigin) failures.push({ url, status: r.status });
+          continue;
+        }
         const data = await r.json().catch(() => ({}));
         const p = data?.price != null ? Number(data.price) : NaN;
         if (Number.isFinite(p) && p > 0) return p;
-      } catch (_) { }
+        if (isProdOrigin) failures.push({ url, status: r.status, note: "no valid price" });
+      } catch (e) {
+        if (isProdOrigin) failures.push({ url, error: e.name || "Error", message: e.message || String(e) });
+      }
+    }
+    if (isProdOrigin && failures.length) {
+      console.warn("[Olympus price] Price fetch failed", { API_BASE, origin: typeof window !== "undefined" ? window.location.origin : "", failures });
     }
     return NaN;
   }, [API_BASE]);

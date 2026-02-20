@@ -22,6 +22,10 @@ const styles = `
   @keyframes popIn { 0% { opacity: 0; transform: scale(0.5); } 80% { opacity: 1; transform: scale(1.1); } 100% { transform: scale(1); } }
   .hero-text { position: absolute; width: 100%; text-align: center; z-index: 20; pointer-events: none; }
   
+  /* HIDE/SHOW HELPERS */
+  .fade-out { animation: fadeOut 0.5s forwards; }
+  @keyframes fadeOut { to { opacity: 0; } }
+
   /* HUGE X ANIMATION */
   .x-mark {
     position: absolute; left: 50%; top: 50%; width: 200%; height: 300%; 
@@ -41,24 +45,42 @@ const styles = `
   .mountain-line { stroke-dasharray: 2000; stroke-dashoffset: 2000; animation: drawMountain 6s linear forwards; }
   @keyframes drawMountain { to { stroke-dashoffset: 0; } }
   
-  /* LIGHTNING FLASH */
+  /* LIGHTNING FLASH - Updated for more intensity */
   @keyframes flashLightning { 
-    0% { opacity: 0; } 5% { opacity: 1; background: #fff; } 10% { opacity: 0; } 15% { opacity: 1; background: #fff; } 30% { opacity: 0; } 
+    0% { opacity: 0; } 
+    5% { opacity: 1; background: #fff; } 
+    10% { opacity: 0; } 
+    15% { opacity: 1; background: #fff; } 
+    25% { opacity: 0; } 
+    30% { opacity: 1; background: #fff; }
+    40% { opacity: 0; }
   }
-  .lightning-flash { position: absolute; inset: 0; pointer-events: none; animation: flashLightning 0.5s 6s linear forwards; opacity: 0; z-index: 50; }
+  .lightning-flash { position: absolute; inset: 0; pointer-events: none; animation: flashLightning 0.5s linear forwards; opacity: 0; z-index: 50; }
 
-  /* FINAL SCENE STYLES */
-  .final-bg-img {
-    position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover;
-    filter: blur(8px) brightness(0.3); transform: scale(1.05);
+  .final-scene-container {
+    position: absolute; inset: 0; z-index: 10;
+    display: flex; align-items: center; justify-content: center;
+    overflow: hidden;
   }
-  .final-center-card {
-    position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%) scale(0.8);
-    width: 400px; height: auto;
-    border-radius: 20px;
-    box-shadow: 0 20px 60px rgba(0,0,0,0.9);
-    animation: popIn 0.5s forwards;
-    z-index: 10;
+  
+  .high-fi-dashboard {
+     width: 100%; height: 100%; background: #0b0b0b;
+     display: grid; grid-template-rows: 60px 1fr 300px;
+     filter: blur(6px) brightness(0.4);
+     transform: scale(1.05); /* hide blur edges */
+  }
+  .hf-header { border-bottom: 1px solid #222; display: flex; align-items: center; padding: 0 20px; gap: 20px; }
+  .hf-chart-area { border: 1px solid #222; margin: 10px; background: #111; position: relative; }
+  .hf-candle { width: 6px; background: #22c55e; position: absolute; bottom: 20%; }
+  
+  .hf-ez-card {
+    position: relative;
+    width: 360px; background: #0E0E0E; border: 1px solid #333; border-radius: 24px;
+    box-shadow: 0 40px 100px rgba(0,0,0,0.9);
+    display: flex; flex-direction: column; overflow: hidden;
+    animation: popIn 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) backwards;
+    z-index: 20;
+    transition: opacity 0.5s;
   }
   
   /* CLICK FINGER ANIMATION */
@@ -73,21 +95,22 @@ const styles = `
     border: 4px solid rgba(255,255,255,0.8); background: rgba(255,255,255,0.2);
     animation: clickTap 0.5s linear forwards;
     pointer-events: none;
-    z-index: 20;
+    z-index: 30;
   }
   
-  /* KEYWORD POPUPS */
   .keyword-pop {
      position: absolute; font-family: 'Titan One', cursive; color: #fff; 
-     text-shadow: 0 5px 15px #000; font-size: 4vw; z-index: 30;
+     text-shadow: 0 5px 15px #000; font-size: 4vw; z-index: 40;
      animation: popIn 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) backwards;
+     pointer-events: none;
+     background: rgba(0,0,0,0.7); padding: 10px 20px; border-radius: 12px;
   }
 
   .c-logo { width: 60px; height: 60px; border-radius: 50%; object-fit: cover; border: 2px solid #fff; background: #000; }
   .shape-appear { animation: popIn 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275) backwards; }
 `;
 
-// ─── SVG LOGO FALLBACKS ───
+// ─── SVG LOGOS ───
 const EclipseSvg = () => (<svg width="60" height="60" viewBox="0 0 100 100"><circle cx="50" cy="50" r="45" fill="black" stroke="#fff" strokeWidth="4" /><path d="M 50 5 A 45 45 0 0 1 50 95 A 35 35 0 0 0 50 5 Z" fill="#fff" /></svg>);
 const MonadSvg = () => (<svg width="60" height="60" viewBox="0 0 100 100"><path d="M 20 80 L 20 20 L 50 50 L 80 20 L 80 80" stroke="#8A2BE2" strokeWidth="12" fill="none" strokeLinecap="round" /></svg>);
 const BeraSvg = () => (<svg width="60" height="60" viewBox="0 0 100 100"><circle cx="50" cy="50" r="45" fill="#fca5a5" stroke="#fff" strokeWidth="2" /><circle cx="35" cy="40" r="5" fill="#000" /><circle cx="65" cy="40" r="5" fill="#000" /><path d="M 40 70 Q 50 80 60 70" stroke="#000" strokeWidth="3" fill="none" /></svg>);
@@ -110,65 +133,101 @@ const ChainLogo = ({ name, fallback }) => {
 const FinalScene = () => {
     const [stage, setStage] = useState(0);
 
-    // Sequence for clicks and words
     useEffect(() => {
-        setTimeout(() => setStage(1), 1000); // Click UP
-        setTimeout(() => setStage(2), 1500); // Show PREDICT
-        setTimeout(() => setStage(3), 2500); // Click DOWN
-        setTimeout(() => setStage(4), 3000); // Show EARN
+        // 0s start
+        setTimeout(() => setStage(1), 800);  // Click UP
+        setTimeout(() => setStage(2), 1600); // Show PREDICT
+        setTimeout(() => setStage(3), 2400); // Click DOWN
+        setTimeout(() => setStage(4), 3200); // Show EARN
         setTimeout(() => setStage(5), 4000); // Show REWARDS
+
+        // Extended Sequence
+        setTimeout(() => setStage(6), 5500); // Click SWAP
+        setTimeout(() => setStage(7), 6000); // Show SWAP Text
+        setTimeout(() => setStage(8), 7000); // Show PROVIDE LIQUIDITY
+        setTimeout(() => setStage(9), 8000); // Show AUTOMATED MM
+
+        setTimeout(() => setStage(10), 9000); // Show PRE-TGE
+        setTimeout(() => setStage(11), 10000); // Show ALL COINS
+
+        // Blackout & Monday
+        setTimeout(() => setStage(12), 12000); // Blackout
     }, []);
 
-    // NOTE: Replace these src with the actual uploaded images if hosted, 
-    // for now using placeholders based on description or base64 if provided.
-    // Assuming local file structure or public folder usage for the user
-    // Since I can't see the file system images, I will use the user provided descriptions to create styled divs or use placeholder URLS that WOULD be the images.
-    // Ideally the user puts 'dashboard.png' and 'mobile-card.png' in public folder.
-    // For this demo, I will use a screenshot-like placeholder using the user's uploaded images if they were URLs, but they are files.
-    // I will use CSS backgrounds that look like the images.
+    // If stage 12, show blackout overlay with STORM LIGHTNING
+    if (stage >= 12) {
+        return (
+            <div style={{ position: "absolute", inset: 0, background: "#000", zIndex: 100, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                {/* MULTIPLE LIGHTNING FLASHES FOR "MORE LIGHTNING" */}
+                <div className="lightning-flash" style={{ animationDuration: "0.2s", animationDelay: "0s" }}></div>
+                <div className="lightning-flash" style={{ animationDuration: "0.15s", animationDelay: "0.4s", animationIterationCount: 2 }}></div>
+                <div className="lightning-flash" style={{ animationDuration: "0.1s", animationDelay: "1.2s" }}></div>
 
-    // Background Image (2nd image)
-    const bgUrl = "https://i.imgur.com/G5g2G8r.jpeg"; // Placeholder for the dark dashboard screenshot
-    // Center Card Image (3rd image)
-    const cardUrl = "https://i.imgur.com/8Q6Zq8M.png"; // Placeholder for the mobile UI card
+                <h1 className="bubble-text" style={{ fontSize: "10vw", color: "#fff", animation: "popIn 0.2s backwards", zIndex: 101 }}>
+                    - Monday -
+                </h1>
+            </div>
+        );
+    }
 
     return (
-        <div style={{ position: "absolute", inset: 0, zIndex: 10, overflow: "hidden" }}>
-            {/* Background */}
-            <div className="final-bg-img" style={{
-                background: `url(${bgUrl}) center/cover no-repeat`, /* In real app use <img src="/dashboard.png" /> */
-                backgroundColor: "#111"
-            }}>
-                {/* Fallback visual if image fails */}
-                <div style={{ width: "100%", height: "100%", background: "linear-gradient(45deg, #111, #000)" }}></div>
+        <div className="final-scene-container">
+            <div style={{ position: "absolute", inset: 0, overflow: "hidden" }}>
+                <div className="high-fi-dashboard">
+                    <div className="hf-header"><div style={{ width: 30, height: 30, background: "#fff", borderRadius: "50%" }}></div><div style={{ color: "#fff", fontWeight: 800 }}>OLYMPUS</div></div>
+                    <div className="hf-chart-area">{[...Array(20)].map((_, i) => <div key={i} className="hf-candle" style={{ left: `${i * 5}%`, height: 20 + Math.random() * 100, bottom: 20 + Math.random() * 40 }}></div>)}</div>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, padding: 10 }}><div style={{ background: "#111", border: "1px solid #222" }}></div><div style={{ background: "#111", border: "1px solid #222" }}></div></div>
+                </div>
             </div>
 
-            {/* Center Card */}
-            <img src={cardUrl} className="final-center-card" alt="EZ Peeze Interface"
-                style={{
-                    // fallback style if image missing
-                    background: "#1a1a1a", border: "1px solid #333", minHeight: 600
-                }}
-            />
-
-            {/* Interactions Overlay */}
-            <div style={{ position: "absolute", left: "50%", top: "50%", transform: "translate(-50%, -50%)", width: 400, height: 600, pointerEvents: "none" }}>
-                {/* Approximate button locations based on mobile card image */}
-                {/* UP Button area: Bottom Left */}
-                {stage === 1 && <div className="click-circle" style={{ bottom: 100, left: 60 }}></div>}
-
-                {/* DOWN Button area: Bottom Right */}
-                {stage === 3 && <div className="click-circle" style={{ bottom: 100, right: 60 }}></div>}
+            <div className="hf-ez-card">
+                <div style={{ display: "flex", background: "#111", margin: 10, borderRadius: 8, padding: 4 }}>
+                    <div style={{ flex: 1, textAlign: "center", padding: 8, color: "#666", fontSize: 11, fontWeight: 700, position: "relative" }}>
+                        SWAP
+                        {stage === 6 && <div className="click-circle" style={{ top: '50%', left: '50%', transform: 'translate(-50%, -50%)' }}></div>}
+                    </div>
+                    <div style={{ flex: 1, textAlign: "center", padding: 8, color: "#666", fontSize: 11, fontWeight: 700 }}>EASY</div>
+                    <div style={{ flex: 1, textAlign: "center", padding: 8, background: "#222", color: "#fff", borderRadius: 6, fontSize: 11, fontWeight: 700 }}>EZ PEEZE</div>
+                </div>
+                <div style={{ padding: "20px", display: "flex", flexDirection: "column", gap: 20 }}>
+                    <div style={{ textAlign: "center" }}>
+                        <div style={{ fontSize: 32, fontFamily: 'Titan One', color: "#4ade80", marginBottom: 4 }}>EZ Peeze</div>
+                        <div style={{ fontSize: 12, color: "#888" }}>Will SOL go up or down?</div>
+                    </div>
+                    <div style={{ background: "#151515", border: "1px solid #222", borderRadius: 16, padding: 20, textAlign: "center" }}>
+                        <div style={{ fontSize: 10, color: "#555", letterSpacing: 1, marginBottom: 4 }}>CURRENT PRICE</div>
+                        <div style={{ fontSize: 42, fontWeight: 800, color: "#fff" }}>82.16</div>
+                        <div style={{ fontSize: 10, color: "#555" }}>SOL / USDC</div>
+                    </div>
+                    <div style={{ display: "flex", gap: 12 }}>
+                        <div style={{ flex: 1, height: 120, background: "rgba(34,197,94,0.1)", border: "1px solid rgba(34,197,94,0.3)", borderRadius: 16, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", cursor: "pointer", position: "relative" }}>
+                            <div style={{ fontSize: 30 }}>📈</div>
+                            <div style={{ color: "#22c55e", fontWeight: 800, marginTop: 8 }}>UP</div>
+                            {stage === 1 && <div className="click-circle" style={{ top: '50%', left: '50%', transform: 'translate(-50%, -50%)' }}></div>}
+                        </div>
+                        <div style={{ flex: 1, height: 120, background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.3)", borderRadius: 16, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", cursor: "pointer", position: "relative" }}>
+                            <div style={{ fontSize: 30 }}>📉</div>
+                            <div style={{ color: "#ef4444", fontWeight: 800, marginTop: 8 }}>DOWN</div>
+                            {stage === 3 && <div className="click-circle" style={{ top: '50%', left: '50%', transform: 'translate(-50%, -50%)' }}></div>}
+                        </div>
+                    </div>
+                </div>
             </div>
 
-            {/* Keywords */}
-            {stage >= 2 && <div className="keyword-pop" style={{ top: "20%", left: "15%", color: "#4ade80" }}>PREDICT</div>}
-            {stage >= 4 && <div className="keyword-pop" style={{ top: "50%", right: "15%", color: "#ef4444" }}>EARN</div>}
-            {stage >= 5 && <div className="keyword-pop" style={{ bottom: "15%", left: "50%", transform: "translateX(-50%)", color: "#ffd700", fontSize: "5vw" }}>REWARDS</div>}
+            {/* KEYWORDS */}
+            {stage >= 2 && <div className="keyword-pop" style={{ top: "25%", left: "10%", color: "#4ade80" }}>PREDICT</div>}
+            {stage >= 4 && <div className="keyword-pop" style={{ top: "40%", right: "10%", color: "#ef4444" }}>EARN</div>}
+            {stage >= 5 && <div className="keyword-pop" style={{ bottom: "5%", left: "10%", color: "#ffd700", fontSize: "3vw" }}>REWARDS</div>}
+
+            {stage >= 7 && <div className="keyword-pop" style={{ top: "15%", left: "50%", transform: "translateX(-50%)", color: "#fff", fontSize: "3vw" }}>SWAP</div>}
+            {stage >= 8 && <div className="keyword-pop" style={{ bottom: "25%", right: "5%", color: "#60a5fa", fontSize: "2.5vw" }}>PROVIDE LIQUIDITY</div>}
+            {stage >= 9 && <div className="keyword-pop" style={{ top: "50%", left: "5%", color: "#a78bfa", fontSize: "2.5vw", maxWidth: 300 }}>AUTOMATED MARKET MAKING</div>}
+
+            {stage >= 10 && <div className="keyword-pop" style={{ top: "10%", right: "5%", color: "#fb923c", fontSize: "2.5vw" }}>PRE-TGE COINS</div>}
+            {stage >= 11 && <div className="keyword-pop" style={{ bottom: "10%", right: "10%", color: "#fff", fontSize: "4vw" }}>ALL COINS</div>}
         </div>
     );
 };
-
 
 // ─── STRIKE TEXT WITH "HUGE X" ───
 const StrikeText = () => {
@@ -208,7 +267,7 @@ const MountainScene = () => {
 
     return (
         <div style={{ position: "absolute", inset: 0, zIndex: 10 }}>
-            <div className="lightning-flash" />
+            <div className="lightning-flash" style={{ animationDuration: "0.5s", animationDelay: "6s" }} />
             <svg style={{ width: "100%", height: "100%", overflow: "visible" }}>
                 <defs><filter id="whiteGlow" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation="6" result="blur" /><feComposite in="SourceGraphic" in2="blur" operator="over" /></filter></defs>
                 <path d={pathL} stroke="#fff" strokeWidth="8" fill="none" strokeLinecap="round" strokeLinejoin="round" className="mountain-line" filter="url(#whiteGlow)" />
@@ -287,16 +346,6 @@ const DemoVideo = () => {
         setTimeout(() => setStep(6), 24000);
     }, []);
 
-    // Use the image URLs provided in the user request context (I'll define these in FinalScene)
-    // For the actual code, since I can't upload files, I will use the placeholder <img src> logic 
-    // but pointing to where these would be if I could upload them. 
-    // I will assume the user has these images locally or I'll use placeholders.
-    // Actually, since this is a React component string, I'll rely on online placeholders or 
-    // if feasible use the data URI if I had it. 
-    // Best approach: Use the previously viewed screenshot structure but enhanced.
-    // Wait, I don't have the image data. I will trust the user to replace the src or 
-    // I will use a generic placeholder that looks *exactly* like the request description.
-
     return (
         <div className="cinematic-container" style={{ width: "100vw", height: "100vh", position: "relative" }}>
             <style>{styles}</style>
@@ -311,8 +360,6 @@ const DemoVideo = () => {
             {step === 3 && <StrikeText />}
             {step === 4 && <div className="hero-text" style={{ top: "35%", animation: "popIn 0.5s" }}><h1 className="bubble-text" style={{ fontSize: "10vw", color: "#fff" }}>NOW YOU CAN</h1></div>}
             {step === 5 && <MountainScene />}
-
-            {/* Step 6: Final UI with Click Interaction */}
             {step === 6 && <FinalScene />}
         </div>
     );

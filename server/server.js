@@ -18,11 +18,20 @@ const ALLOWED_ORIGINS = [
   "https://olympus.omeganetwork.co",
   "https://www.olympus.omeganetwork.co",
 ];
-// In production mode allow any origin; otherwise use whitelist (so prod works even if NODE_ENV isn't set on Render)
+// Allow any subdomain of omeganetwork.co (e.g. www, staging) so CORS never blocks production
+const isAllowedOrigin = (origin) => {
+  if (!origin) return true;
+  if (ALLOWED_ORIGINS.includes(origin)) return true;
+  try {
+    const u = new URL(origin);
+    if (u.hostname === "omeganetwork.co" || u.hostname.endsWith(".omeganetwork.co")) return true;
+  } catch (_) {}
+  return false;
+};
 app.use(cors({
   origin: (origin, cb) => {
     if (process.env.NODE_ENV === "production") return cb(null, true);
-    if (!origin || ALLOWED_ORIGINS.includes(origin)) return cb(null, true);
+    if (isAllowedOrigin(origin)) return cb(null, true);
     cb(null, false);
   },
 }));
@@ -496,10 +505,20 @@ app.get("/api/coingecko-market", async (req, res) => {
   if (cached && Date.now() - cached.ts < COINGECKO_MARKET_CACHE_TTL_MS) {
     return res.json({ ...cached.data, id });
   }
-  const data = await fetchCoingeckoMarket(id);
+  let data = await fetchCoingeckoMarket(id);
   if (data) {
     coingeckoMarketCache.set(id, { data, ts: Date.now() });
     return res.json({ ...data, id });
+  }
+  // Fallback: CoinGecko often rate-limits or fails from Render; use Binance for at least price
+  const binanceSymbol = CG_TO_BINANCE[id];
+  if (binanceSymbol) {
+    const price = await fetchBinancePrice(binanceSymbol);
+    if (price != null && price > 0) {
+      data = { price, volume24h: null, high24h: null, low24h: null, changePercent24h: null, marketCap: null, marketCapRank: null, ath: null, athChangePercent: null, athDate: null, atl: null, atlChangePercent: null, atlDate: null, circulatingSupply: null, totalSupply: null, maxSupply: null, fullyDilutedValuation: null, lastUpdated: null };
+      coingeckoMarketCache.set(id, { data, ts: Date.now() });
+      return res.json({ ...data, id });
+    }
   }
   return res.status(502).json({ error: "Market data unavailable", id });
 });
@@ -514,16 +533,19 @@ app.get("/api/coingecko-price", async (req, res) => {
     return res.json({ price: cached.price, id });
   }
 
-  // Fetch fresh
+  // Fetch fresh from CoinGecko
   let price = await fetchCoingeckoPrice(id);
-
-  // Retry once if null
   if (price == null) {
     await new Promise((r) => setTimeout(r, 800));
     price = await fetchCoingeckoPrice(id);
   }
 
-  if (price != null) {
+  // Fallback: CoinGecko often rate-limits from Render; use Binance so production still gets a price
+  if (price == null && CG_TO_BINANCE[id]) {
+    price = await fetchBinancePrice(CG_TO_BINANCE[id]);
+  }
+
+  if (price != null && price > 0) {
     coingeckoPriceCache.set(id, { price, ts: Date.now() });
     return res.json({ price, id });
   }
