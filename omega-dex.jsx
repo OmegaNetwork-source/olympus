@@ -1416,8 +1416,9 @@ export default function OmegaDEX() {
     if (!cgId) return null;
     const id = encodeURIComponent(cgId);
     const urls = [];
-    // Always try same-origin /api first (localhost: Vite proxy; production: works if host proxies /api to Render)
-    if (typeof window !== "undefined") urls.push(`/api/coingecko-market?id=${id}`);
+    // Localhost: try Vite proxy first. Production: only API_BASE so we don't send a 404 then Render (2 requests → 1)
+    if (typeof window !== "undefined" && /^https?:\/\/localhost(:\d+)?$|^https?:\/\/127\.0\.0\.1(:\d+)?$/i.test(window.location.origin))
+      urls.push(`/api/coingecko-market?id=${id}`);
     if (API_BASE) urls.push(`${API_BASE.replace(/\/$/, "")}/api/coingecko-market?id=${id}`);
     const failures = [];
     for (const url of urls) {
@@ -1474,7 +1475,8 @@ export default function OmegaDEX() {
     if (!cgId) return NaN;
     const id = encodeURIComponent(cgId);
     const urls = [];
-    if (typeof window !== "undefined") urls.push(`/api/coingecko-price?id=${id}`);
+    if (typeof window !== "undefined" && /^https?:\/\/localhost(:\d+)?$|^https?:\/\/127\.0\.0\.1(:\d+)?$/i.test(window.location.origin))
+      urls.push(`/api/coingecko-price?id=${id}`);
     if (API_BASE) urls.push(`${API_BASE.replace(/\/$/, "")}/api/coingecko-price?id=${id}`);
     const failures = [];
     for (const url of urls) {
@@ -1519,7 +1521,7 @@ export default function OmegaDEX() {
     } catch (e) {
       setApiError(e.message || "Price temporarily unavailable");
     }
-  }, [selectedPair, zeroxPair, nonEvmPair, wallet.address, API_BASE, fetchPriceFromBackend]);
+  }, [selectedPair, zeroxPair, nonEvmPair, wallet.address, API_BASE]);
 
   // Debounced version to avoid flooding API on rapid WS messages
   const loadDataTimerRef = useRef(null);
@@ -1531,19 +1533,17 @@ export default function OmegaDEX() {
     }, 150);
   }, [loadData]);
 
-  // Only clear price and market stats when the user actually switches to a different pair
+  // Clear displayed price and market stats whenever the user switches pair so we never show the previous pair's price (e.g. PRE price when switching to AAVE)
   const prevPairForPriceRef = useRef(selectedPair);
   useEffect(() => {
     if (prevPairForPriceRef.current !== selectedPair) {
       prevPairForPriceRef.current = selectedPair;
-      if (zeroxPair || nonEvmPair) {
-        setOrderBook((prev) => (prev.midPrice ? { ...prev, midPrice: 0 } : prev));
-        setMarketStats(null);
-      }
+      setOrderBook((prev) => (prev.midPrice ? { ...prev, midPrice: 0 } : prev));
+      setMarketStats(null);
     }
-  }, [selectedPair, zeroxPair, nonEvmPair]);
+  }, [selectedPair]);
 
-  // Header price + 24h stats: when user selects a symbol (zerox or nonEvm), call market API and show price + vol/high/low
+  // Header price + 24h stats: one call per symbol — only /api/coingecko-market (server already falls back to Binance/CoinPaprika)
   useEffect(() => {
     const pair = zeroxPair || nonEvmPair;
     if (!pair) return;
@@ -1552,13 +1552,8 @@ export default function OmegaDEX() {
     let cancelled = false;
     setApiError(null);
     (async () => {
-      let market = await fetchMarketFromBackend(cgId);
+      const market = await fetchMarketFromBackend(cgId);
       if (cancelled) return;
-      if (!market?.price) {
-        const p = await fetchPriceFromBackend(cgId);
-        if (cancelled) return;
-        market = p != null && p > 0 ? { price: p, volume24h: null, high24h: null, low24h: null, changePercent24h: null } : null;
-      }
       if (market?.price) {
         const p = market.price;
         const spread = p * 0.0005;
@@ -1600,13 +1595,13 @@ export default function OmegaDEX() {
       }
     })();
     return () => { cancelled = true; };
-  }, [selectedPair, zeroxPair, nonEvmPair, fetchPriceFromBackend, fetchMarketFromBackend]);
+  }, [selectedPair, zeroxPair, nonEvmPair, fetchMarketFromBackend]);
 
   useEffect(() => {
     loadData();
   }, [loadData, selectedPair]);
 
-  // When header price fails for zerox/nonEvm, auto-retry a few times (cold start / rate limits)
+  // When header price fails for zerox/nonEvm, auto-retry a few times (same single market endpoint)
   const priceFeedRetryRef = useRef({ count: 0, timer: null });
   useEffect(() => {
     const pair = zeroxPair || nonEvmPair;
@@ -1617,8 +1612,9 @@ export default function OmegaDEX() {
     if (priceFeedRetryRef.current.count >= maxRetries) return;
     const t = setTimeout(async () => {
       priceFeedRetryRef.current.count += 1;
-      const p = await fetchPriceFromBackend(cgId);
-      if (Number.isFinite(p) && p > 0) {
+      const market = await fetchMarketFromBackend(cgId);
+      if (market?.price) {
+        const p = market.price;
         const spread = p * 0.0005;
         setOrderBook({
           midPrice: p,
@@ -1629,18 +1625,37 @@ export default function OmegaDEX() {
           bids: [{ price: p - spread, amount: 100, cumulative: 100 }],
           asks: [{ price: p + spread, amount: 100, cumulative: 100 }],
         });
+        setMarketStats({
+          volume24h: market.volume24h ?? null,
+          high24h: market.high24h ?? null,
+          low24h: market.low24h ?? null,
+          changePercent24h: market.changePercent24h ?? null,
+          marketCap: market.marketCap ?? null,
+          marketCapRank: market.marketCapRank ?? null,
+          ath: market.ath ?? null,
+          athChangePercent: market.athChangePercent ?? null,
+          athDate: market.athDate ?? null,
+          atl: market.atl ?? null,
+          atlChangePercent: market.atlChangePercent ?? null,
+          atlDate: market.atlDate ?? null,
+          circulatingSupply: market.circulatingSupply ?? null,
+          totalSupply: market.totalSupply ?? null,
+          maxSupply: market.maxSupply ?? null,
+          fullyDilutedValuation: market.fullyDilutedValuation ?? null,
+          lastUpdated: market.lastUpdated ?? null,
+        });
         setApiError(null);
         setNonEvmPriceFailed(false);
       }
     }, 4000);
     priceFeedRetryRef.current.timer = t;
     return () => clearTimeout(t);
-  }, [apiError, zeroxPair, nonEvmPair, fetchPriceFromBackend]);
+  }, [apiError, zeroxPair, nonEvmPair, fetchMarketFromBackend]);
   useEffect(() => {
     if (!zeroxPair && !nonEvmPair) priceFeedRetryRef.current = { count: 0, timer: null };
   }, [selectedPair, zeroxPair, nonEvmPair]);
 
-  // Refresh header price + market stats every 15s for zerox/nonEvm
+  // Refresh header price + market stats every 60s (one call; was 15s and doubled with price fallback)
   useEffect(() => {
     const pair = zeroxPair || nonEvmPair;
     if (!pair) return;
@@ -1680,25 +1695,10 @@ export default function OmegaDEX() {
           fullyDilutedValuation: market.fullyDilutedValuation ?? null,
           lastUpdated: market.lastUpdated ?? null,
         });
-      } else {
-        const p = await fetchPriceFromBackend(cgId);
-        if (Number.isFinite(p) && p > 0) {
-          const spread = p * 0.0005;
-          setOrderBook({
-            midPrice: p,
-            asks: [{ price: p + spread, amount: 100, total: 100 * (p + spread) }],
-            bids: [{ price: p - spread, amount: 100, total: 100 * (p - spread) }],
-          });
-          setDepthData({
-            bids: [{ price: p - spread, amount: 100, cumulative: 100 }],
-            asks: [{ price: p + spread, amount: 100, cumulative: 100 }],
-          });
-          setNonEvmPriceFailed(false);
-        }
       }
-    }, 15000);
+    }, 60000);
     return () => clearInterval(t);
-  }, [selectedPair, zeroxPair, nonEvmPair, fetchPriceFromBackend, fetchMarketFromBackend]);
+  }, [selectedPair, zeroxPair, nonEvmPair, fetchMarketFromBackend]);
 
   useEffect(() => {
     if (!nonEvmPair) setNonEvmPriceFailed(false);

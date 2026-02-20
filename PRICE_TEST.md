@@ -82,3 +82,26 @@ The chart and our header use **different data paths**. The chart is fed by Tradi
 - **API URL**: The frontend uses `VITE_API_URL` / `VITE_API_BASE` at build time, or falls back to `https://olympus-api-n3xm.onrender.com`. No env needed for that fallback.
 - **Cold start**: Render free tier spins down after ~15 min. The first request can take 30+ seconds. The app uses a 25s timeout and retries every 4s (up to 5 times), so after the service wakes, prices should appear. For faster first load, use a keep-warm cron (e.g. hit `/api/health` every 10 min) or a paid Render plan.
 - **Same-origin /api**: The app tries same-origin `/api/coingecko-price` and `/api/coingecko-market` first. If your host (e.g. Vercel/Netlify) proxies `/api/*` to the Render API URL, prices will work without cross-origin and can avoid cold-start timeouts from the browser.
+
+## Why CoinGecko works locally but not in production (Render)
+
+The **same code** calls CoinGecko from your machine (local) and from Render (production). The difference is **where the request comes from**:
+
+1. **Rate limiting (most likely)**  
+   CoinGecko’s free API has strict limits (e.g. ~10–30 calls per minute per IP).  
+   - **Local:** Only your browser and your dev server hit the API, so you stay under the limit.  
+   - **Production:** Every page load and every user triggers requests from **Render’s IP**. Many requests from one IP → CoinGecko returns **429 Too Many Requests** and the API stops answering.  
+   In Render logs you’ll see: `[Price] CoinGecko price non-ok for aave status 429` (or market) when that happens.
+
+2. **Datacenter vs home IP**  
+   Some providers throttle or block traffic from known cloud/datacenter IPs. Render runs in a datacenter; your home IP is treated as a normal user. So CoinGecko may allow your local requests but limit or block Render’s.
+
+3. **Request volume**  
+   In production you have multiple users, retries, and the 15s refresh. That’s many more CoinGecko calls from the same Render IP, so you hit rate limits quickly.
+
+**What we do about it:**  
+When CoinGecko fails (429, timeout, or error), the server falls back to **Binance** and then **CoinPaprika** for the same coin. So production still gets a price; it just may not come from CoinGecko. Check Render logs for `[Price] coingecko-price fallback Binance ok` or `fallback CoinPaprika ok` to see the fallback in use.
+
+**If you want CoinGecko to work from production too:**  
+- Use **CoinGecko Pro** (paid) and set `COINGECKO_API_KEY` (or similar) in the server; Pro has higher limits and often different treatment of server IPs.  
+- Or **reduce calls**: longer cache TTL, or proxy CoinGecko through a service that pools/caches (so Render isn’t the only IP hitting CoinGecko).

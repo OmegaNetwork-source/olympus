@@ -457,6 +457,9 @@ async function fetchCoingeckoPrice(id) {
       const data = await r.json();
       const price = data?.[id]?.usd;
       if (typeof price === "number" && price > 0) return price;
+    } else {
+      // 429 = rate limit (common from Render); 403 = blocked
+      console.warn("[Price] CoinGecko price non-ok for", id, "status", r.status);
     }
   } catch (e) {
     console.warn("[Price] CoinGecko failed for", id, e.message);
@@ -473,7 +476,10 @@ async function fetchCoingeckoMarket(id) {
       `https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=${encodeURIComponent(id)}&per_page=1`,
       { headers: { Accept: "application/json", "User-Agent": "OmegaDEX/1.0" } }
     );
-    if (!r.ok) return null;
+    if (!r.ok) {
+      console.warn("[Price] CoinGecko market non-ok for", id, "status", r.status);
+      return null;
+    }
     const arr = await r.json();
     const m = Array.isArray(arr) && arr[0] ? arr[0] : null;
     if (!m) return null;
